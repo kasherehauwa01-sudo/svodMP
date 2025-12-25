@@ -64,7 +64,8 @@ def _render_period_picker() -> str:
     today = datetime.date.today()
     first_day = today.replace(day=1)
     previous_month = first_day - datetime.timedelta(days=1)
-    # Не зависим от локали.
+
+    # Не зависим от локали
     default_month = months[previous_month.month - 1]
     default_year = previous_month.year
 
@@ -84,13 +85,15 @@ def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
 def main() -> None:
     setup_logging()
     setup_streamlit_logger()
+
     st.title("Импорт данных из Excel в Google Sheets")
 
     st.markdown(
         """
 **Описание**
 - Выберите Excel файлы (.xls/.xlsx)
-- Укажите период, если его нет в названии файла
+- Укажите период, если его нет в названии файла (можно отключить)
+- Укажите Spreadsheet ID (или оставьте пустым, если он есть в config.json)
 - При необходимости включите режим dry-run
 """
     )
@@ -100,28 +103,54 @@ def main() -> None:
         type=["xls", "xlsx"],
         accept_multiple_files=True,
     )
-    period = _render_period_picker()
+
+    use_manual_period = st.checkbox("Указать период вручную", value=True)
+    period_value = None
+    if use_manual_period:
+        period_value = _render_period_picker()
+
+    # Подтягиваем значения из config.json, но даём возможность переопределить в UI
     config = load_config("./config.json")
-    spreadsheet_id = extract_spreadsheet_id(config.get("spreadsheet_id", ""))
-    credentials_path = config.get("credentials_path", "")
+    config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
+    config_credentials = config.get("credentials_path") or config.get("credentials") or ""
+
+    spreadsheet_input = st.text_input(
+        "Spreadsheet ID или ссылка (если пусто — возьмём из config.json)",
+        value=config_sheet or "",
+    )
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_input) or config_sheet
+
+    credentials_path = st.text_input(
+        "Путь к service account JSON",
+        value=config_credentials if config_credentials else "./service_account.json",
+    )
+
     dry_run = st.checkbox("Dry run (без записи)", value=True)
 
     if st.button("Запустить импорт"):
         st.session_state["log_lines"].clear()
-        if not uploaded_files or not spreadsheet_id or not credentials_path:
-            st.error("Заполните обязательные поля: файлы и config.json")
+
+        if not uploaded_files:
+            st.error("Выберите файлы Excel")
+            return
+        if not spreadsheet_id:
+            st.error("Не найден Spreadsheet ID. Укажите его в поле или в config.json")
+            return
+        if not credentials_path:
+            st.error("Укажите путь к credentials (service account JSON)")
             return
 
-        st.info("Запуск обработки. Логи смотрите в консоли приложения.")
+        st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
         with tempfile.TemporaryDirectory() as temp_dir:
             _save_uploaded_files(uploaded_files, Path(temp_dir))
             process_directory(
                 input_dir=temp_dir,
-                period=period,
+                period=period_value,
                 spreadsheet_id=spreadsheet_id,
                 credentials=credentials_path,
                 dry_run=dry_run,
             )
+
         st.success("Готово")
 
     st.subheader("Логи")
