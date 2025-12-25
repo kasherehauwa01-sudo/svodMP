@@ -83,6 +83,58 @@ def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
         file_path.write_bytes(uploaded_file.getbuffer())
 
 
+def _resolve_credentials_path(
+    temp_path: Path,
+    credentials_path: str,
+    credentials_upload,
+) -> str | None:
+    """
+    Возвращает путь к credentials:
+    1) из Streamlit Secrets: [gcp_service_account]
+    2) из загрузки JSON
+    3) из указанного пути (локально)
+    """
+    secrets = st.secrets
+
+    # Рекомендуемый вариант: secrets.toml содержит таблицу [gcp_service_account]
+    if "gcp_service_account" in secrets:
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(
+            json.dumps(dict(secrets["gcp_service_account"]), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return str(credentials_file)
+
+    # Backward-compatible варианты, если кто-то назвал иначе
+    if "credentials_json" in secrets:
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
+        return str(credentials_file)
+
+    if "google" in secrets and isinstance(secrets["google"], dict):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(
+            json.dumps(secrets["google"], ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return str(credentials_file)
+
+    if credentials_upload:
+        credentials_file = temp_path / credentials_upload.name
+        credentials_file.write_bytes(credentials_upload.getbuffer())
+        return str(credentials_file)
+
+    if not credentials_path:
+        st.error("Укажите credentials в Secrets, введите путь или загрузите файл JSON")
+        return None
+
+    if not Path(credentials_path).exists():
+        st.error("Файл credentials не найден. Проверьте путь (поле или config.json)")
+        return None
+
+    return credentials_path
+
+
 def main() -> None:
     setup_logging()
     setup_streamlit_logger()
@@ -95,6 +147,7 @@ def main() -> None:
 - Выберите Excel файлы (.xls/.xlsx)
 - Укажите период, если его нет в названии файла (можно отключить)
 - Укажите Spreadsheet ID (или оставьте пустым, если он есть в config.json)
+- Credentials можно задать через Streamlit Secrets (рекомендуется), загрузкой JSON или путём к файлу
 - При необходимости включите режим dry-run
 """
     )
@@ -122,11 +175,12 @@ def main() -> None:
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_input) or config_sheet
 
     credentials_path = st.text_input(
-        "Путь к service account JSON",
-        value=config_credentials if config_credentials else "./service_account.json",
+        "Путь к service account JSON (для локального запуска)",
+        value=config_credentials if config_credentials else "",
     )
+
     credentials_upload = st.file_uploader(
-        "Или загрузите service account JSON",
+        "Или загрузите service account JSON (если не используете Secrets)",
         type=["json"],
         accept_multiple_files=False,
     )
@@ -142,6 +196,7 @@ def main() -> None:
         if not spreadsheet_id:
             st.error("Не найден Spreadsheet ID. Укажите его в поле или в config.json")
             return
+
         st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -182,39 +237,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-def _resolve_credentials_path(
-    temp_path: Path,
-    credentials_path: str,
-    credentials_upload,
-) -> str | None:
-    """Возвращает путь к credentials (из Streamlit secrets, загрузки или пути)."""
-    secrets = st.secrets
-    if "credentials_json" in secrets:
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
-        return str(credentials_file)
-
-    if "google" in secrets and isinstance(secrets["google"], dict):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(
-            json.dumps(secrets["google"], ensure_ascii=False),
-            encoding="utf-8",
-        )
-        return str(credentials_file)
-
-    if credentials_upload:
-        credentials_file = temp_path / credentials_upload.name
-        credentials_file.write_bytes(credentials_upload.getbuffer())
-        return str(credentials_file)
-
-    if not credentials_path:
-        st.error("Укажите credentials в Secrets, пути или загрузите файл JSON")
-        return None
-
-    if not Path(credentials_path).exists():
-        st.error("Файл credentials не найден. Проверьте путь (поле или config.json)")
-        return None
-
-    return credentials_path
