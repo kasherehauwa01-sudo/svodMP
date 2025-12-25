@@ -31,12 +31,15 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    spreadsheet_id = extract_spreadsheet_id(args.spreadsheet_id) or extract_spreadsheet_id(
-        config.get("spreadsheet_id")
-    )
+
+    # 1) пробуем взять из аргумента
+    spreadsheet_id = extract_spreadsheet_id(args.spreadsheet_id) if args.spreadsheet_id else None
+    # 2) если не получилось — пробуем взять из config.json
+    if not spreadsheet_id:
+        spreadsheet_id = extract_spreadsheet_id(config.get("spreadsheet_id"))
 
     if not spreadsheet_id:
-        raise SystemExit("Не указан spreadsheet_id и он не найден в config.json")
+        raise SystemExit("Не указан spreadsheet_id и он не найден/невалиден в config.json")
 
     process_directory(
         input_dir=args.input_dir,
