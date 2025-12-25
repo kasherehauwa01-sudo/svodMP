@@ -140,7 +140,7 @@ def main() -> None:
             st.error("Укажите путь к credentials (service account JSON)")
             return
         if not Path(credentials_path).exists():
-            st.error("Файл credentials не найден. Проверьте путь в config.json")
+            st.error("Файл credentials не найден. Проверьте путь (поле или config.json)")
             return
 
         st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
@@ -164,7 +164,7 @@ def main() -> None:
         height=300,
     )
     st.download_button(
-        label="Копировать логи",
+        label="Скачать логи",
         data=log_text,
         file_name="logs.txt",
         mime="text/plain",

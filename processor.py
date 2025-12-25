@@ -79,6 +79,7 @@ def process_directory(
         if not Path(credentials).exists():
             logger.error("Файл credentials не найден: %s", credentials)
             return
+
         service = build_sheets_service(credentials)
         sheet_infos = fetch_sheet_infos(service, spreadsheet_id)
 
@@ -146,12 +147,12 @@ def _build_context(file_path: Path, fallback_period: str | None, dry_run: bool) 
         raise ValueError("Не удалось определить магазин по названию")
 
     detected_period = _detect_period(file_path.stem)
-    period = detected_period or fallback_period
-    if not period:
+    period_value = detected_period or fallback_period
+    if not period_value:
         raise ValueError("Не найден период в названии и не указан --period")
 
-    new_path = _maybe_rename(file_path, period, detected_period, dry_run)
-    return FileContext(path=new_path, store=store, period=period)
+    new_path = _maybe_rename(file_path, period_value, detected_period, dry_run)
+    return FileContext(path=new_path, store=store, period=period_value)
 
 
 def _detect_store(filename: str) -> str | None:
