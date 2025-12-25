@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import datetime
 import logging
+import tempfile
 from pathlib import Path
 
 import streamlit as st
@@ -15,45 +17,88 @@ def setup_logging() -> None:
     )
 
 
+def _render_period_picker() -> str:
+    """Возвращает выбранный период в формате 'Месяц ГГГГ'."""
+    months = [
+        "Январь",
+        "Февраль",
+        "Март",
+        "Апрель",
+        "Май",
+        "Июнь",
+        "Июль",
+        "Август",
+        "Сентябрь",
+        "Октябрь",
+        "Ноябрь",
+        "Декабрь",
+    ]
+    today = datetime.date.today()
+    first_day = today.replace(day=1)
+    previous_month = first_day - datetime.timedelta(days=1)
+
+    # default_month через индекс (не зависим от локали)
+    default_month = months[previous_month.month - 1]
+    default_year = previous_month.year
+
+    month = st.selectbox("Месяц периода", months, index=months.index(default_month))
+    year = st.number_input("Год периода", min_value=2000, max_value=2100, value=default_year, step=1)
+    return f"{month} {int(year)}"
+
+
+def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
+    """Сохраняет загруженные файлы во временную папку."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for uploaded_file in uploaded_files:
+        file_path = target_dir / uploaded_file.name
+        file_path.write_bytes(uploaded_file.getbuffer())
+
+
 def main() -> None:
     setup_logging()
     st.title("Импорт данных из Excel в Google Sheets")
 
-    st.markdown("""
-    **Описание**
-    - Выберите папку с Excel файлами (.xls/.xlsx)
-    - Укажите период, если его нет в названии файла
-    - При необходимости включите режим dry-run
-    """)
+    st.markdown(
+        """
+**Описание**
+- Выберите Excel файлы (.xls/.xlsx)
+- Укажите период, если его нет в названии файла
+- При необходимости включите режим dry-run
+"""
+    )
 
-    input_dir = st.text_input("Папка с файлами", value="./input")
-    period = st.text_input("Период (например, Декабрь 2025)")
+    uploaded_files = st.file_uploader(
+        "Excel файлы",
+        type=["xls", "xlsx"],
+        accept_multiple_files=True,
+    )
+
+    # Период: можно выбрать, но можно и оставить пустым (если в названии файла есть)
+    use_manual_period = st.checkbox("Указать период вручную", value=True)
+    period_value = None
+    if use_manual_period:
+        period_value = _render_period_picker()
+
     spreadsheet_id = st.text_input("Spreadsheet ID")
     credentials_path = st.text_input("Путь к service account JSON", value="./service_account.json")
     dry_run = st.checkbox("Dry run (без записи)", value=True)
 
     if st.button("Запустить импорт"):
-        if not input_dir or not spreadsheet_id or not credentials_path:
-            st.error("Заполните обязательные поля: папка, spreadsheet_id, credentials")
-            return
-
-        if period.strip() == "":
-            period_value = None
-        else:
-            period_value = period.strip()
-
-        if not Path(input_dir).exists():
-            st.error("Папка не найдена")
+        if not uploaded_files or not spreadsheet_id or not credentials_path:
+            st.error("Заполните обязательные поля: файлы, spreadsheet_id, credentials")
             return
 
         st.info("Запуск обработки. Логи смотрите в консоли приложения.")
-        process_directory(
-            input_dir=input_dir,
-            period=period_value,
-            spreadsheet_id=spreadsheet_id,
-            credentials=credentials_path,
-            dry_run=dry_run,
-        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            _save_uploaded_files(uploaded_files, Path(temp_dir))
+            process_directory(
+                input_dir=temp_dir,
+                period=period_value,
+                spreadsheet_id=spreadsheet_id,
+                credentials=credentials_path,
+                dry_run=dry_run,
+            )
+
         st.success("Готово")
 
 
