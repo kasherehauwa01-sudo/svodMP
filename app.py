@@ -13,6 +13,9 @@ from config_loader import extract_spreadsheet_id, load_config
 from processor import process_directory
 
 
+# -----------------------------
+# LOGGING
+# -----------------------------
 def setup_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -41,11 +44,16 @@ def setup_streamlit_logger() -> None:
         return
 
     handler = StreamlitLogHandler(st.session_state["log_lines"])
-    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    )
     logging.getLogger().addHandler(handler)
     st.session_state["log_handler_attached"] = True
 
 
+# -----------------------------
+# UI HELPERS
+# -----------------------------
 def _render_period_picker() -> str:
     """Возвращает выбранный период в формате 'Месяц ГГГГ'."""
     months = [
@@ -62,16 +70,23 @@ def _render_period_picker() -> str:
         "Ноябрь",
         "Декабрь",
     ]
+
     today = datetime.date.today()
     first_day = today.replace(day=1)
     previous_month = first_day - datetime.timedelta(days=1)
 
-    # Не зависим от локали
     default_month = months[previous_month.month - 1]
     default_year = previous_month.year
 
     month = st.selectbox("Месяц периода", months, index=months.index(default_month))
-    year = st.number_input("Год периода", min_value=2000, max_value=2100, value=default_year, step=1)
+    year = st.number_input(
+        "Год периода",
+        min_value=2000,
+        max_value=2100,
+        value=default_year,
+        step=1,
+    )
+
     return f"{month} {int(year)}"
 
 
@@ -83,6 +98,9 @@ def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
         file_path.write_bytes(uploaded_file.getbuffer())
 
 
+# -----------------------------
+# CREDENTIALS RESOLVER
+# -----------------------------
 def _resolve_credentials_path(
     temp_path: Path,
     credentials_path: str,
@@ -90,13 +108,14 @@ def _resolve_credentials_path(
 ) -> str | None:
     """
     Возвращает путь к credentials:
-    1) из Streamlit Secrets: [gcp_service_account]
-    2) из загрузки JSON
-    3) из указанного пути (локально)
+    1) Streamlit Secrets: [gcp_service_account] (рекомендуется)
+    2) Secrets: credentials_json или [google]
+    3) Загрузка JSON через UI
+    4) Локальный путь к файлу
     """
     secrets = st.secrets
 
-    # Рекомендуемый вариант: secrets.toml содержит таблицу [gcp_service_account]
+    # Рекомендуемый вариант
     if "gcp_service_account" in secrets:
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(
@@ -105,7 +124,7 @@ def _resolve_credentials_path(
         )
         return str(credentials_file)
 
-    # Backward-compatible варианты, если кто-то назвал иначе
+    # Backward-compatible варианты
     if "credentials_json" in secrets:
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
@@ -119,22 +138,27 @@ def _resolve_credentials_path(
         )
         return str(credentials_file)
 
+    # Загрузка из UI
     if credentials_upload:
         credentials_file = temp_path / credentials_upload.name
         credentials_file.write_bytes(credentials_upload.getbuffer())
         return str(credentials_file)
 
+    # Локальный путь
     if not credentials_path:
-        st.error("Укажите credentials в Secrets, введите путь или загрузите файл JSON")
+        st.error("Укажите credentials в Secrets, загрузите JSON или введите путь")
         return None
 
     if not Path(credentials_path).exists():
-        st.error("Файл credentials не найден. Проверьте путь (поле или config.json)")
+        st.error("Файл credentials не найден. Проверьте путь или config.json")
         return None
 
     return credentials_path
 
 
+# -----------------------------
+# MAIN
+# -----------------------------
 def main() -> None:
     setup_logging()
     setup_streamlit_logger()
@@ -159,14 +183,16 @@ def main() -> None:
     )
 
     use_manual_period = st.checkbox("Указать период вручную", value=True)
-    period_value = None
-    if use_manual_period:
-        period_value = _render_period_picker()
+    period_value = _render_period_picker() if use_manual_period else None
 
-    # Подтягиваем значения из config.json, но даём возможность переопределить в UI
+    # Конфиг
     config = load_config("./config.json")
     config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
-    config_credentials = config.get("credentials_path") or config.get("credentials") or ""
+    config_credentials = (
+        config.get("credentials_path")
+        or config.get("credentials")
+        or ""
+    )
 
     spreadsheet_input = st.text_input(
         "Spreadsheet ID или ссылка (если пусто — возьмём из config.json)",
@@ -176,7 +202,7 @@ def main() -> None:
 
     credentials_path = st.text_input(
         "Путь к service account JSON (для локального запуска)",
-        value=config_credentials if config_credentials else "",
+        value=config_credentials,
     )
 
     credentials_upload = st.file_uploader(
@@ -193,20 +219,24 @@ def main() -> None:
         if not uploaded_files:
             st.error("Выберите файлы Excel")
             return
+
         if not spreadsheet_id:
-            st.error("Не найден Spreadsheet ID. Укажите его в поле или в config.json")
+            st.error("Не найден Spreadsheet ID. Укажите его или заполните config.json")
             return
 
-        st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
+        st.info("Запуск обработки. Логи смотрите ниже.")
+
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
+
             _save_uploaded_files(uploaded_files, temp_path)
 
             credentials_to_use = _resolve_credentials_path(
-                temp_path,
+                temp_path=temp_path,
                 credentials_path=credentials_path,
                 credentials_upload=credentials_upload,
             )
+
             if not credentials_to_use:
                 return
 
@@ -222,13 +252,9 @@ def main() -> None:
 
     st.subheader("Логи")
     log_text = "\n".join(st.session_state.get("log_lines", []))
-    st.text_area(
-        "Журнал выполнения",
-        value=log_text,
-        height=300,
-    )
+    st.text_area("Журнал выполнения", value=log_text, height=300)
     st.download_button(
-        label="Скачать логи",
+        "Скачать логи",
         data=log_text,
         file_name="logs.txt",
         mime="text/plain",

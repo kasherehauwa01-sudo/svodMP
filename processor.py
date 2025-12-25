@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from googleapiclient.errors import HttpError
+
 from excel_reader import ExcelReadError, read_excel
 from sheets_client import (
     apply_green_fill,
@@ -41,7 +43,7 @@ STORE_ALIASES = {
     "Привоз": ["привоз"],
     "Бахтурова": ["бахтурова"],
     "Ахтубинск": ["ахтубинск"],
-    "СтройГрад": ["стройград", "строй град", "стройград"],
+    "СтройГрад": ["стройград", "строй град"],
     "Европа": ["европа"],
     "Парк Хаус": ["парк хаус", "паркхаус"],
     "ЦУМ": ["цум"],
@@ -75,13 +77,18 @@ def process_directory(
 
     service = None
     sheet_infos = []
+
     if not dry_run:
         if not Path(credentials).exists():
             logger.error("Файл credentials не найден: %s", credentials)
             return
 
-        service = build_sheets_service(credentials)
-        sheet_infos = fetch_sheet_infos(service, spreadsheet_id)
+        try:
+            service = build_sheets_service(credentials)
+            sheet_infos = fetch_sheet_infos(service, spreadsheet_id)
+        except HttpError as exc:
+            logger.error("Ошибка доступа к Google Sheets API: %s", exc)
+            return
 
     for file_path in files:
         try:
@@ -120,7 +127,11 @@ def process_directory(
 
         sheet_info = find_mp_sheet(sheet_infos, context.store)
         if not sheet_info:
-            logger.error("%s: не найден лист МП для магазина '%s'", file_path.name, context.store)
+            logger.error(
+                "%s: не найден лист МП для магазина '%s'",
+                file_path.name,
+                context.store,
+            )
             continue
 
         last_row = get_last_filled_row(service, spreadsheet_id, sheet_info.title)
@@ -149,7 +160,7 @@ def _build_context(file_path: Path, fallback_period: str | None, dry_run: bool) 
     detected_period = _detect_period(file_path.stem)
     period_value = detected_period or fallback_period
     if not period_value:
-        raise ValueError("Не найден период в названии и не указан --period")
+        raise ValueError("Не найден период в названии и не указан период вручную")
 
     new_path = _maybe_rename(file_path, period_value, detected_period, dry_run)
     return FileContext(path=new_path, store=store, period=period_value)
