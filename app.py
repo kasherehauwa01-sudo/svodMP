@@ -7,6 +7,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from config_loader import extract_spreadsheet_id, load_config
 from processor import process_directory
 
 
@@ -37,7 +38,7 @@ def _render_period_picker() -> str:
     first_day = today.replace(day=1)
     previous_month = first_day - datetime.timedelta(days=1)
 
-    # default_month через индекс (не зависим от локали)
+    # не зависим от локали
     default_month = months[previous_month.month - 1]
     default_year = previous_month.year
 
@@ -62,7 +63,8 @@ def main() -> None:
         """
 **Описание**
 - Выберите Excel файлы (.xls/.xlsx)
-- Укажите период, если его нет в названии файла
+- Укажите период, если его нет в названии файла (можно отключить)
+- Укажите Spreadsheet ID (или оставьте пустым, если он есть в config.json)
 - При необходимости включите режим dry-run
 """
     )
@@ -73,19 +75,33 @@ def main() -> None:
         accept_multiple_files=True,
     )
 
-    # Период: можно выбрать, но можно и оставить пустым (если в названии файла есть)
     use_manual_period = st.checkbox("Указать период вручную", value=True)
     period_value = None
     if use_manual_period:
         period_value = _render_period_picker()
 
-    spreadsheet_id = st.text_input("Spreadsheet ID")
+    # Подтягиваем значение из config.json, но даём возможность переопределить в UI
+    config = load_config("./config.json")
+    config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
+
+    spreadsheet_input = st.text_input(
+        "Spreadsheet ID или ссылка (если пусто — возьмём из config.json)",
+        value=config_sheet or "",
+    )
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_input) or config_sheet
+
     credentials_path = st.text_input("Путь к service account JSON", value="./service_account.json")
     dry_run = st.checkbox("Dry run (без записи)", value=True)
 
     if st.button("Запустить импорт"):
-        if not uploaded_files or not spreadsheet_id or not credentials_path:
-            st.error("Заполните обязательные поля: файлы, spreadsheet_id, credentials")
+        if not uploaded_files:
+            st.error("Выберите файлы Excel")
+            return
+        if not spreadsheet_id:
+            st.error("Не найден Spreadsheet ID. Укажите его в поле или в config.json")
+            return
+        if not credentials_path:
+            st.error("Укажите путь к credentials (service account JSON)")
             return
 
         st.info("Запуск обработки. Логи смотрите в консоли приложения.")
