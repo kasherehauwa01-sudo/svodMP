@@ -111,9 +111,7 @@ def process_directory(
             continue
 
         if dry_run:
-            logger.info(
-                "[DRY RUN] Перенесли бы %s строк", len(excel_data.rows)
-            )
+            logger.info("[DRY RUN] Перенесли бы %s строк", len(excel_data.rows))
             continue
 
         sheet_info = find_mp_sheet(sheet_infos, context.store)

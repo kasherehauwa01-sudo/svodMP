@@ -4,6 +4,7 @@ import datetime
 import logging
 import tempfile
 from pathlib import Path
+from typing import List
 
 import streamlit as st
 
@@ -16,6 +17,32 @@ def setup_logging() -> None:
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
+
+
+class StreamlitLogHandler(logging.Handler):
+    """Логгер, который сохраняет сообщения в session_state для вывода в UI."""
+
+    def __init__(self, log_store: List[str]) -> None:
+        super().__init__()
+        self.log_store = log_store
+
+    def emit(self, record: logging.LogRecord) -> None:
+        message = self.format(record)
+        self.log_store.append(message)
+
+
+def setup_streamlit_logger() -> None:
+    """Инициализирует логирование в UI один раз за сессию."""
+    if "log_lines" not in st.session_state:
+        st.session_state["log_lines"] = []
+
+    if st.session_state.get("log_handler_attached"):
+        return
+
+    handler = StreamlitLogHandler(st.session_state["log_lines"])
+    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+    logging.getLogger().addHandler(handler)
+    st.session_state["log_handler_attached"] = True
 
 
 def _render_period_picker() -> str:
@@ -38,7 +65,7 @@ def _render_period_picker() -> str:
     first_day = today.replace(day=1)
     previous_month = first_day - datetime.timedelta(days=1)
 
-    # не зависим от локали
+    # Не зависим от локали
     default_month = months[previous_month.month - 1]
     default_year = previous_month.year
 
@@ -57,6 +84,8 @@ def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
 
 def main() -> None:
     setup_logging()
+    setup_streamlit_logger()
+
     st.title("Импорт данных из Excel в Google Sheets")
 
     st.markdown(
@@ -99,6 +128,8 @@ def main() -> None:
     dry_run = st.checkbox("Dry run (без записи)", value=True)
 
     if st.button("Запустить импорт"):
+        st.session_state["log_lines"].clear()
+
         if not uploaded_files:
             st.error("Выберите файлы Excel")
             return
@@ -109,7 +140,7 @@ def main() -> None:
             st.error("Укажите путь к credentials (service account JSON)")
             return
 
-        st.info("Запуск обработки. Логи смотрите в консоли приложения.")
+        st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
         with tempfile.TemporaryDirectory() as temp_dir:
             _save_uploaded_files(uploaded_files, Path(temp_dir))
             process_directory(
@@ -121,6 +152,13 @@ def main() -> None:
             )
 
         st.success("Готово")
+
+    st.subheader("Логи")
+    st.text_area(
+        "Журнал выполнения",
+        value="\n".join(st.session_state.get("log_lines", [])),
+        height=300,
+    )
 
 
 if __name__ == "__main__":
