@@ -25,6 +25,8 @@ KEYWORDS = {
     "goods": "Товары",
     "gift_cert": "Подарочные сертификаты",
 }
+
+# В разных файлах заголовки могут быть на 2–5 строках (по твоим примерам такое бывает)
 HEADER_ROWS = [2, 3, 4, 5]
 
 
@@ -46,6 +48,7 @@ def _read_xlsx(file_path: Path) -> ExcelData:
 
     header_row_index = HEADER_ROWS[0]
     column_map = _find_keyword_columns_xlsx(sheet, HEADER_ROWS)
+
     data_start_row = _find_data_start_row_xlsx(sheet)
     data_end_row = _find_data_end_row_xlsx(sheet, data_start_row)
 
@@ -66,6 +69,7 @@ def _read_xls(file_path: Path) -> ExcelData:
 
     header_row_index = HEADER_ROWS[0]
     column_map = _find_keyword_columns_xls(sheet, HEADER_ROWS)
+
     data_start_row = _find_data_start_row_xls(sheet)
     data_end_row = _find_data_end_row_xls(sheet, data_start_row)
 
@@ -93,12 +97,16 @@ def _find_keyword_columns_xlsx(
             text = _normalize_header_value(value)
             if not text:
                 continue
+
             for key, keyword in KEYWORDS.items():
                 if key in column_map:
                     continue
                 if keyword.lower() in text:
+                    # Если заголовок в объединённой ячейке — берём левую границу
                     left_col = _get_merge_left_col_xlsx(sheet, header_row, col)
+                    # В xlsx дальше используем +1 при чтении, поэтому тут сохраняем "0-based"
                     column_map[key] = left_col - 1
+
         if len(column_map) == len(KEYWORDS):
             break
 
@@ -119,18 +127,21 @@ def _find_keyword_columns_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -
     column_map: dict[str, int] = {}
 
     for header_row in header_rows:
-        row_index = header_row - 1
+        row_index = header_row - 1  # xlrd 0-based
         for col in range(sheet.ncols):
             value = sheet.cell_value(row_index, col)
             text = _normalize_header_value(value)
             if not text:
                 continue
+
             for key, keyword in KEYWORDS.items():
                 if key in column_map:
                     continue
                 if keyword.lower() in text:
+                    # В xls merged_cells уже 0-based, возвращаем как есть
                     left_col = _get_merge_left_col_xls(sheet, row_index, col)
                     column_map[key] = left_col
+
         if len(column_map) == len(KEYWORDS):
             break
 
@@ -226,7 +237,9 @@ def _extract_rows_xls(
 
 
 def _build_row_xlsx(
-    sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column_map: dict[str, int]
+    sheet: openpyxl.worksheet.worksheet.Worksheet,
+    row: int,
+    column_map: dict[str, int],
 ) -> list[Any]:
     values = [
         sheet.cell(row=row, column=1).value,
@@ -256,7 +269,7 @@ def _build_row_xls(sheet: xlrd.sheet.Sheet, row: int, column_map: dict[str, int]
 
 
 def _validate_column_map(column_map: dict[str, int], header_rows: list[int]) -> None:
-    missing = [keyword for keyword in KEYWORDS if keyword not in column_map]
+    missing = [key for key in KEYWORDS if key not in column_map]
     if missing:
         raise ExcelReadError(
             "Не найдены заголовки в строках "
