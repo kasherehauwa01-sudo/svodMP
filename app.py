@@ -139,6 +139,9 @@ def main() -> None:
         if not credentials_path:
             st.error("Укажите путь к credentials (service account JSON)")
             return
+        if not Path(credentials_path).exists():
+            st.error("Файл credentials не найден. Проверьте путь (поле или config.json)")
+            return
 
         st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -154,10 +157,17 @@ def main() -> None:
         st.success("Готово")
 
     st.subheader("Логи")
+    log_text = "\n".join(st.session_state.get("log_lines", []))
     st.text_area(
         "Журнал выполнения",
-        value="\n".join(st.session_state.get("log_lines", [])),
+        value=log_text,
         height=300,
+    )
+    st.download_button(
+        label="Скачать логи",
+        data=log_text,
+        file_name="logs.txt",
+        mime="text/plain",
     )
 
 
