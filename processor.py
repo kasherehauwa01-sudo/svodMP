@@ -77,7 +77,6 @@ def process_directory(
 
     service = None
     sheet_infos = []
-
     if not dry_run:
         if not Path(credentials).exists():
             logger.error("Файл credentials не найден: %s", credentials)

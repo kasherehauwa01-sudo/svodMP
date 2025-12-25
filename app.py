@@ -44,9 +44,7 @@ def setup_streamlit_logger() -> None:
         return
 
     handler = StreamlitLogHandler(st.session_state["log_lines"])
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
     logging.getLogger().addHandler(handler)
     st.session_state["log_handler_attached"] = True
 
@@ -70,11 +68,11 @@ def _render_period_picker() -> str:
         "Ноябрь",
         "Декабрь",
     ]
-
     today = datetime.date.today()
     first_day = today.replace(day=1)
     previous_month = first_day - datetime.timedelta(days=1)
 
+    # Не зависим от локали
     default_month = months[previous_month.month - 1]
     default_year = previous_month.year
 
@@ -86,7 +84,6 @@ def _render_period_picker() -> str:
         value=default_year,
         step=1,
     )
-
     return f"{month} {int(year)}"
 
 
@@ -115,7 +112,7 @@ def _resolve_credentials_path(
     """
     secrets = st.secrets
 
-    # Рекомендуемый вариант
+    # Рекомендуемый вариант: secrets.toml содержит таблицу [gcp_service_account]
     if "gcp_service_account" in secrets:
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(
@@ -188,11 +185,7 @@ def main() -> None:
     # Конфиг
     config = load_config("./config.json")
     config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
-    config_credentials = (
-        config.get("credentials_path")
-        or config.get("credentials")
-        or ""
-    )
+    config_credentials = config.get("credentials_path") or config.get("credentials") or ""
 
     spreadsheet_input = st.text_input(
         "Spreadsheet ID или ссылка (если пусто — возьмём из config.json)",
@@ -228,7 +221,6 @@ def main() -> None:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-
             _save_uploaded_files(uploaded_files, temp_path)
 
             credentials_to_use = _resolve_credentials_path(
@@ -236,7 +228,6 @@ def main() -> None:
                 credentials_path=credentials_path,
                 credentials_upload=credentials_upload,
             )
-
             if not credentials_to_use:
                 return
 
