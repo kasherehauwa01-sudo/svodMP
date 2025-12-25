@@ -1,3 +1,4 @@
 {
-  "spreadsheet_id": "18FFM1eQSlhU9lP9AZBul3c1g0TRcpqBbE3QEF6T-kyI"
+  "spreadsheet_id": "18FFM1eQSlhU9lP9AZBul3c1g0TRcpqBbE3QEF6T-kyI",
+  "credentials_path": "./service_account.json"
 }

@@ -80,9 +80,10 @@ def main() -> None:
     if use_manual_period:
         period_value = _render_period_picker()
 
-    # Подтягиваем значение из config.json, но даём возможность переопределить в UI
+    # Подтягиваем значения из config.json, но даём возможность переопределить в UI
     config = load_config("./config.json")
     config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
+    config_credentials = config.get("credentials_path") or config.get("credentials") or ""
 
     spreadsheet_input = st.text_input(
         "Spreadsheet ID или ссылка (если пусто — возьмём из config.json)",
@@ -90,7 +91,11 @@ def main() -> None:
     )
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_input) or config_sheet
 
-    credentials_path = st.text_input("Путь к service account JSON", value="./service_account.json")
+    credentials_path = st.text_input(
+        "Путь к service account JSON",
+        value=config_credentials if config_credentials else "./service_account.json",
+    )
+
     dry_run = st.checkbox("Dry run (без записи)", value=True)
 
     if st.button("Запустить импорт"):
