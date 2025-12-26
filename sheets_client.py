@@ -20,7 +20,8 @@ class SheetInfo:
 
 def build_sheets_service(credentials_path: str):
     credentials = service_account.Credentials.from_service_account_file(
-        credentials_path, scopes=SCOPES
+        credentials_path,
+        scopes=SCOPES,
     )
     return build("sheets", "v4", credentials=credentials)
 
@@ -31,19 +32,23 @@ def fetch_sheet_infos(service, spreadsheet_id: str) -> list[SheetInfo]:
         .get(spreadsheetId=spreadsheet_id, fields="sheets.properties")
         .execute()
     )
-    sheet_infos = []
+    sheet_infos: list[SheetInfo] = []
     for sheet in response.get("sheets", []):
         props = sheet.get("properties", {})
-        sheet_infos.append(SheetInfo(sheet_id=props.get("sheetId"), title=props.get("title")))
+        sheet_infos.append(
+            SheetInfo(
+                sheet_id=int(props.get("sheetId")),
+                title=str(props.get("title")),
+            )
+        )
     return sheet_infos
 
 
 def find_mp_sheet(sheet_infos: list[SheetInfo], store_name: str) -> SheetInfo | None:
     store_lower = store_name.lower()
+
     candidates = [
-        info
-        for info in sheet_infos
-        if info.title and "мп" in info.title.lower()
+        info for info in sheet_infos if info.title and "мп" in info.title.lower()
     ]
 
     for info in candidates:
@@ -96,6 +101,69 @@ def apply_green_fill(service, spreadsheet_id: str, sheet_id: int, row_index: int
     service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 
+def insert_row(service, spreadsheet_id: str, sheet_id: int, row_index: int) -> None:
+    """
+    Вставляет 1 строку перед row_index (1-based).
+    """
+    requests = [
+        {
+            "insertDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_index - 1,  # 0-based
+                    "endIndex": row_index,        # 0-based end (exclusive)
+                },
+                "inheritFromBefore": False,
+            }
+        }
+    ]
+    body = {"requests": requests}
+    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+
+
+def update_summary_row(
+    service,
+    spreadsheet_id: str,
+    sheet_title: str,
+    summary_row: int,
+    period: str,
+    data_start_row: int,
+    data_end_row: int,
+) -> None:
+    """
+    Заполняет summary-строку формулами по диапазону данных.
+    Колонки: A..H
+    A: период
+    C: SUM(C)
+    D: SUM(D)
+    E: AVERAGE(E)
+    F: SUM(F)
+    G: SUM(G)
+    H: SUM(H)
+    """
+    values = [
+        [
+            period,
+            "",
+            f"=SUM(C{data_start_row}:C{data_end_row})",
+            f"=SUM(D{data_start_row}:D{data_end_row})",
+            f"=AVERAGE(E{data_start_row}:E{data_end_row})",
+            f"=SUM(F{data_start_row}:F{data_end_row})",
+            f"=SUM(G{data_start_row}:G{data_end_row})",
+            f"=SUM(H{data_start_row}:H{data_end_row})",
+        ]
+    ]
+    range_name = f"'{sheet_title}'!A{summary_row}:H{summary_row}"
+    body = {"values": values}
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=range_name,
+        valueInputOption="USER_ENTERED",
+        body=body,
+    ).execute()
+
+
 def update_values(
     service,
     spreadsheet_id: str,
@@ -121,6 +189,7 @@ def update_formulas(
     start_row: int,
     end_row: int,
 ) -> None:
+    # Колонка E: пример формулы (как было в main)
     formulas = [[f"=C{row}/D{row}"] for row in range(start_row, end_row + 1)]
     range_name = f"'{sheet_title}'!E{start_row}:E{end_row}"
     body = {"values": formulas}

@@ -14,7 +14,9 @@ from sheets_client import (
     fetch_sheet_infos,
     find_mp_sheet,
     get_last_filled_row,
+    insert_row,
     update_formulas,
+    update_summary_row,
     update_values,
 )
 
@@ -134,19 +136,42 @@ def process_directory(
             continue
 
         last_row = get_last_filled_row(service, spreadsheet_id, sheet_info.title)
-        start_row = last_row + 1
-        end_row = start_row + len(excel_data.rows) - 1
+
+        # Добавляем "итоговую/summary" строку, затем пишем данные ниже
+        summary_row = last_row + 1
+        data_start = summary_row + 1
+        data_end = summary_row + len(excel_data.rows)
 
         logger.info(
-            "Запись в лист '%s': строки %s-%s",
+            "Запись в лист '%s': строки %s-%s (summary=%s)",
             sheet_info.title,
-            start_row,
-            end_row,
+            data_start,
+            data_end,
+            summary_row,
         )
 
-        apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, start_row)
-        update_values(service, spreadsheet_id, sheet_info.title, start_row, excel_data.rows)
-        update_formulas(service, spreadsheet_id, sheet_info.title, start_row, end_row)
+        # 1) вставить строку под summary, чтобы не перетирать существующие формулы/итоги
+        insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+
+        # 2) подсветить summary (как маркер загрузки)
+        apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+
+        # 3) заполнить summary-строку (период + диапазон данных и т.п.)
+        update_summary_row(
+            service=service,
+            spreadsheet_id=spreadsheet_id,
+            sheet_title=sheet_info.title,
+            summary_row=summary_row,
+            period=context.period,
+            data_start_row=data_start,
+            data_end_row=data_end,
+        )
+
+        # 4) загрузить данные
+        update_values(service, spreadsheet_id, sheet_info.title, data_start, excel_data.rows)
+
+        # 5) протянуть формулы
+        update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
 
         logger.info("%s: успешно перенесено строк: %s", file_path.name, len(excel_data.rows))
 
