@@ -43,7 +43,7 @@ STORE_ALIASES = {
     "Привоз": ["привоз"],
     "Бахтурова": ["бахтурова"],
     "Ахтубинск": ["ахтубинск"],
-    "СтройГрад": ["стройград", "строй град", "стройград"],
+    "СтройГрад": ["стройград", "строй град"],
     "Европа": ["европа"],
     "Парк Хаус": ["парк хаус", "паркхаус"],
     "ЦУМ": ["цум"],
@@ -81,6 +81,7 @@ def process_directory(
         if not Path(credentials).exists():
             logger.error("Файл credentials не найден: %s", credentials)
             return
+
         try:
             service = build_sheets_service(credentials)
             sheet_infos = fetch_sheet_infos(service, spreadsheet_id)
@@ -125,7 +126,11 @@ def process_directory(
 
         sheet_info = find_mp_sheet(sheet_infos, context.store)
         if not sheet_info:
-            logger.error("%s: не найден лист МП для магазина '%s'", file_path.name, context.store)
+            logger.error(
+                "%s: не найден лист МП для магазина '%s'",
+                file_path.name,
+                context.store,
+            )
             continue
 
         last_row = get_last_filled_row(service, spreadsheet_id, sheet_info.title)
@@ -152,12 +157,12 @@ def _build_context(file_path: Path, fallback_period: str | None, dry_run: bool) 
         raise ValueError("Не удалось определить магазин по названию")
 
     detected_period = _detect_period(file_path.stem)
-    period = detected_period or fallback_period
-    if not period:
-        raise ValueError("Не найден период в названии и не указан --period")
+    period_value = detected_period or fallback_period
+    if not period_value:
+        raise ValueError("Не найден период в названии и не указан период вручную")
 
-    new_path = _maybe_rename(file_path, period, detected_period, dry_run)
-    return FileContext(path=new_path, store=store, period=period)
+    new_path = _maybe_rename(file_path, period_value, detected_period, dry_run)
+    return FileContext(path=new_path, store=store, period=period_value)
 
 
 def _detect_store(filename: str) -> str | None:
