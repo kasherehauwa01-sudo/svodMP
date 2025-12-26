@@ -26,7 +26,7 @@ KEYWORDS = {
     "gift_cert": "Подарочные сертификаты",
 }
 
-# В разных файлах заголовки могут быть на 2–5 строках
+# В разных файлах заголовки могут быть на 2–5 строках (fallback)
 HEADER_ROWS = [2, 3, 4, 5]
 
 
@@ -368,7 +368,9 @@ def _build_header_rows(data_start_row: int) -> list[int]:
 def _normalize_header_value(value: Any) -> Optional[str]:
     if value is None:
         return None
-    text = str(value).strip().lower()
+    # NBSP + схлопывание пробелов — частая причина "не находится заголовок"
+    text = str(value).replace("\u00a0", " ").strip().lower()
+    text = " ".join(text.split())
     return text if text else None
 
 
