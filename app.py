@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import List
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from config_loader import extract_spreadsheet_id, load_config
 from processor import process_directory
@@ -67,12 +66,17 @@ def _render_period_picker() -> str:
     first_day = today.replace(day=1)
     previous_month = first_day - datetime.timedelta(days=1)
 
-    # Не зависим от локали
     default_month = months[previous_month.month - 1]
     default_year = previous_month.year
 
     month = st.selectbox("Месяц периода", months, index=months.index(default_month))
-    year = st.number_input("Год периода", min_value=2000, max_value=2100, value=default_year, step=1)
+    year = st.number_input(
+        "Год периода",
+        min_value=2000,
+        max_value=2100,
+        value=default_year,
+        step=1,
+    )
     return f"{month} {int(year)}"
 
 
@@ -82,6 +86,61 @@ def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
     for uploaded_file in uploaded_files:
         file_path = target_dir / uploaded_file.name
         file_path.write_bytes(uploaded_file.getbuffer())
+
+
+def _resolve_credentials_path(
+    temp_path: Path,
+    credentials_path: str,
+    credentials_upload,
+) -> str | None:
+    """
+    Возвращает путь к credentials:
+    1) Streamlit Secrets: [gcp_service_account] (рекомендуется)
+    2) Secrets: credentials_json или [google] (на случай старых настроек)
+    3) Загрузка JSON через UI
+    4) Локальный путь к файлу (для локального запуска)
+    """
+    secrets = st.secrets
+
+    # Рекомендуемый вариант: secrets.toml содержит таблицу [gcp_service_account]
+    if "gcp_service_account" in secrets:
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(
+            json.dumps(dict(secrets["gcp_service_account"]), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return str(credentials_file)
+
+    # Backward-compatible варианты
+    if "credentials_json" in secrets:
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
+        return str(credentials_file)
+
+    if "google" in secrets and isinstance(secrets["google"], dict):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(
+            json.dumps(secrets["google"], ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return str(credentials_file)
+
+    # Загрузка из UI
+    if credentials_upload:
+        credentials_file = temp_path / credentials_upload.name
+        credentials_file.write_bytes(credentials_upload.getbuffer())
+        return str(credentials_file)
+
+    # Локальный путь
+    if not credentials_path:
+        st.error("Укажите credentials в Secrets, загрузите JSON или введите путь")
+        return None
+
+    if not Path(credentials_path).exists():
+        st.error("Файл credentials не найден. Проверьте путь или config.json")
+        return None
+
+    return credentials_path
 
 
 def main() -> None:
@@ -96,6 +155,7 @@ def main() -> None:
 - Выберите Excel файлы (.xls/.xlsx)
 - Укажите период, если его нет в названии файла (можно отключить)
 - Укажите Spreadsheet ID (или оставьте пустым, если он есть в config.json)
+- Credentials можно задать через Streamlit Secrets (рекомендуется), загрузкой JSON или путём к файлу
 - При необходимости включите режим dry-run
 """
     )
@@ -107,11 +167,9 @@ def main() -> None:
     )
 
     use_manual_period = st.checkbox("Указать период вручную", value=True)
-    period_value = None
-    if use_manual_period:
-        period_value = _render_period_picker()
+    period_value = _render_period_picker() if use_manual_period else None
 
-    # Подтягиваем значения из config.json, но даём возможность переопределить в UI
+    # Конфиг
     config = load_config("./config.json")
     config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
     config_credentials = config.get("credentials_path") or config.get("credentials") or ""
@@ -123,11 +181,12 @@ def main() -> None:
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_input) or config_sheet
 
     credentials_path = st.text_input(
-        "Путь к service account JSON",
-        value=config_credentials if config_credentials else "./service_account.json",
+        "Путь к service account JSON (для локального запуска)",
+        value=config_credentials,
     )
+
     credentials_upload = st.file_uploader(
-        "Или загрузите service account JSON",
+        "Или загрузите service account JSON (если не используете Secrets)",
         type=["json"],
         accept_multiple_files=False,
     )
@@ -140,16 +199,19 @@ def main() -> None:
         if not uploaded_files:
             st.error("Выберите файлы Excel")
             return
+
         if not spreadsheet_id:
-            st.error("Не найден Spreadsheet ID. Укажите его в поле или в config.json")
+            st.error("Не найден Spreadsheet ID. Укажите его или заполните config.json")
             return
-        st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
+
+        st.info("Запуск обработки. Логи смотрите ниже.")
+
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             _save_uploaded_files(uploaded_files, temp_path)
 
             credentials_to_use = _resolve_credentials_path(
-                temp_path,
+                temp_path=temp_path,
                 credentials_path=credentials_path,
                 credentials_upload=credentials_upload,
             )
@@ -168,63 +230,14 @@ def main() -> None:
 
     st.subheader("Логи")
     log_text = "\n".join(st.session_state.get("log_lines", []))
-    st.text_area(
-        "Журнал выполнения",
-        value=log_text,
-        height=300,
+    st.text_area("Журнал выполнения", value=log_text, height=300)
+    st.download_button(
+        "Скачать логи",
+        data=log_text,
+        file_name="logs.txt",
+        mime="text/plain",
     )
-    if st.button("Копировать логи"):
-        _copy_to_clipboard(log_text)
-        st.success("Логи скопированы в буфер обмена")
 
 
 if __name__ == "__main__":
     main()
-
-
-def _copy_to_clipboard(text: str) -> None:
-    """Копирует текст в буфер обмена через компонент HTML."""
-    escaped_text = (
-        text.replace("\\\\", "\\\\\\\\")
-        .replace("`", "\\`")
-        .replace("$", "\\$")
-        .replace("\n", "\\n")
-    )
-    components.html(
-        f\"\"\"\n        <script>\n        navigator.clipboard.writeText(`{escaped_text}`);\n        </script>\n        \"\"\",\n        height=0,\n    )
-
-
-def _resolve_credentials_path(
-    temp_path: Path,
-    credentials_path: str,
-    credentials_upload,
-) -> str | None:
-    """Возвращает путь к credentials (из Streamlit secrets, загрузки или пути)."""
-    secrets = st.secrets
-    if "credentials_json" in secrets:
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
-        return str(credentials_file)
-
-    if "google" in secrets and isinstance(secrets["google"], dict):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(
-            json.dumps(secrets["google"], ensure_ascii=False),
-            encoding="utf-8",
-        )
-        return str(credentials_file)
-
-    if credentials_upload:
-        credentials_file = temp_path / credentials_upload.name
-        credentials_file.write_bytes(credentials_upload.getbuffer())
-        return str(credentials_file)
-
-    if not credentials_path:
-        st.error("Укажите credentials в Secrets, пути или загрузите файл JSON")
-        return None
-
-    if not Path(credentials_path).exists():
-        st.error("Файл credentials не найден. Проверьте путь (поле или config.json)")
-        return None
-
-    return credentials_path
