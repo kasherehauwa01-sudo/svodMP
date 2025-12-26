@@ -26,7 +26,7 @@ KEYWORDS = {
     "gift_cert": "Подарочные сертификаты",
 }
 
-# В разных файлах заголовки могут быть на 2–5 строках (по твоим примерам такое бывает)
+# В разных файлах заголовки могут быть на 2–5 строках
 HEADER_ROWS = [2, 3, 4, 5]
 
 
@@ -115,10 +115,15 @@ def _find_keyword_columns_xlsx(
 
 
 def _get_merge_left_col_xlsx(
-    sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, col: int
+    sheet: openpyxl.worksheet.worksheet.Worksheet,
+    row: int,
+    col: int,
 ) -> int:
     for cell_range in sheet.merged_cells.ranges:
-        if cell_range.min_row <= row <= cell_range.max_row and cell_range.min_col <= col <= cell_range.max_col:
+        if (
+            cell_range.min_row <= row <= cell_range.max_row
+            and cell_range.min_col <= col <= cell_range.max_col
+        ):
             return cell_range.min_col
     return col
 
