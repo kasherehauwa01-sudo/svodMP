@@ -208,7 +208,6 @@ def main() -> None:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-
             _save_uploaded_files(uploaded_files, temp_path)
 
             credentials_to_use = _resolve_credentials_path(

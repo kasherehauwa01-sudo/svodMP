@@ -132,7 +132,10 @@ def _get_merge_left_col_xlsx(
     return col
 
 
-def _find_keyword_columns_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -> dict[str, int]:
+def _find_keyword_columns_xls(
+    sheet: xlrd.sheet.Sheet,
+    header_rows: list[int],
+) -> dict[str, int]:
     column_map: dict[str, int] = {}
 
     for header_row in header_rows:
@@ -210,20 +213,41 @@ def _get_header_text_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> Optiona
 
 
 def _find_data_start_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> int:
-    for row in range(1, sheet.max_row + 1):
+    max_row = sheet.max_row
+
+    # Сначала ищем "Дата" строго в колонке A
+    for row in range(1, max_row + 1):
         value = _get_header_text_xlsx(sheet, row, 1)
         if _is_date_header(value):
             return row + 1
-    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в колонке A")
+
+    # Если шаблон плавает: ищем в диапазоне A:H
+    for row in range(1, max_row + 1):
+        for col in range(1, min(sheet.max_column, 8) + 1):
+            value = _get_header_text_xlsx(sheet, row, col)
+            if _is_date_header(value):
+                return row + 1
+
+    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
 
 
 def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> int:
+    # Сначала ищем "Дата" строго в колонке A
     for row in range(sheet.nrows):
         value = _get_header_text_xls(sheet, row, 0)
         if _is_date_header(value):
             # данные начинаются со следующей строки, а мы возвращаем 1-based для дальнейшей логики
             return row + 2
-    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в колонке A")
+
+    # Если шаблон плавает: ищем в диапазоне A:H
+    max_col = min(sheet.ncols, 8)
+    for row in range(sheet.nrows):
+        for col in range(max_col):
+            value = _get_header_text_xls(sheet, row, col)
+            if _is_date_header(value):
+                return row + 2
+
+    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
 
 
 def _find_data_end_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet, start_row: int) -> int:
