@@ -106,9 +106,9 @@ def _resolve_credentials_path(
     """
     Возвращает путь к credentials:
     1) Streamlit Secrets: [gcp_service_account] (рекомендуется)
-    2) Secrets: credentials_json или [google]
+    2) Secrets: credentials_json или [google] (на случай старых настроек)
     3) Загрузка JSON через UI
-    4) Локальный путь к файлу
+    4) Локальный путь к файлу (для локального запуска)
     """
     secrets = st.secrets
 
