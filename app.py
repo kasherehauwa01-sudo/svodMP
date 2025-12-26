@@ -13,9 +13,6 @@ from config_loader import extract_spreadsheet_id, load_config
 from processor import process_directory
 
 
-# -----------------------------
-# LOGGING
-# -----------------------------
 def setup_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -49,9 +46,6 @@ def setup_streamlit_logger() -> None:
     st.session_state["log_handler_attached"] = True
 
 
-# -----------------------------
-# UI HELPERS
-# -----------------------------
 def _render_period_picker() -> str:
     """Возвращает выбранный период в формате 'Месяц ГГГГ'."""
     months = [
@@ -72,7 +66,6 @@ def _render_period_picker() -> str:
     first_day = today.replace(day=1)
     previous_month = first_day - datetime.timedelta(days=1)
 
-    # Не зависим от локали
     default_month = months[previous_month.month - 1]
     default_year = previous_month.year
 
@@ -95,9 +88,6 @@ def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
         file_path.write_bytes(uploaded_file.getbuffer())
 
 
-# -----------------------------
-# CREDENTIALS RESOLVER
-# -----------------------------
 def _resolve_credentials_path(
     temp_path: Path,
     credentials_path: str,
@@ -153,9 +143,6 @@ def _resolve_credentials_path(
     return credentials_path
 
 
-# -----------------------------
-# MAIN
-# -----------------------------
 def main() -> None:
     setup_logging()
     setup_streamlit_logger()
@@ -221,6 +208,7 @@ def main() -> None:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
+
             _save_uploaded_files(uploaded_files, temp_path)
 
             credentials_to_use = _resolve_credentials_path(

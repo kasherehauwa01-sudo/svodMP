@@ -48,7 +48,7 @@ def _read_xlsx(file_path: Path) -> ExcelData:
 
     data_start_row = _find_data_start_row_xlsx(sheet)
 
-    # Пытаемся искать заголовки во всех строках до строки "Дата", иначе fallback на HEADER_ROWS
+    # Ищем заголовки во всех строках до строки "Дата", иначе fallback на HEADER_ROWS
     header_rows = _build_header_rows(data_start_row) or HEADER_ROWS
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
 
@@ -106,9 +106,9 @@ def _find_keyword_columns_xlsx(
                 if key in column_map:
                     continue
                 if keyword.lower() in text:
-                    # Если заголовок в объединённой ячейке — берём левую границу
+                    # Если заголовок в объединённой ячейке, берём левую границу
                     left_col = _get_merge_left_col_xlsx(sheet, header_row, col)
-                    # В xlsx дальше используем +1 при чтении, поэтому тут сохраняем "0-based"
+                    # В xlsx дальше используем +1 при чтении, поэтому тут 0-based
                     column_map[key] = left_col - 1
 
         if len(column_map) == len(KEYWORDS):
@@ -137,6 +137,9 @@ def _find_keyword_columns_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -
 
     for header_row in header_rows:
         row_index = header_row - 1  # xlrd 0-based
+        if row_index < 0 or row_index >= sheet.nrows:
+            continue
+
         for col in range(sheet.ncols):
             text = _get_header_text_xls(sheet, row_index, col)
             if not text:
@@ -146,7 +149,7 @@ def _find_keyword_columns_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -
                 if key in column_map:
                     continue
                 if keyword.lower() in text:
-                    # В xls merged_cells уже 0-based, возвращаем как есть
+                    # В xls merged_cells уже 0-based
                     left_col = _get_merge_left_col_xls(sheet, row_index, col)
                     column_map[key] = left_col
 
@@ -171,7 +174,7 @@ def _get_header_text_xlsx(
 ) -> Optional[str]:
     """
     Возвращает текст заголовка.
-    Если ячейка пуста, но она внутри merged range — берём значение из левой верхней.
+    Если ячейка пуста, но она внутри merged range, берём значение из левой верхней.
     """
     value = sheet.cell(row=row, column=col).value
     text = _normalize_header_value(value)
@@ -183,7 +186,10 @@ def _get_header_text_xlsx(
             cell_range.min_row <= row <= cell_range.max_row
             and cell_range.min_col <= col <= cell_range.max_col
         ):
-            merged_value = sheet.cell(row=cell_range.min_row, column=cell_range.min_col).value
+            merged_value = sheet.cell(
+                row=cell_range.min_row,
+                column=cell_range.min_col,
+            ).value
             return _normalize_header_value(merged_value)
 
     return None
@@ -205,7 +211,7 @@ def _get_header_text_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> Optiona
 
 def _find_data_start_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> int:
     for row in range(1, sheet.max_row + 1):
-        value = sheet.cell(row=row, column=1).value
+        value = _get_header_text_xlsx(sheet, row, 1)
         if _is_date_header(value):
             return row + 1
     raise ExcelReadError("Не найдена строка с заголовком 'Дата' в колонке A")
@@ -213,10 +219,9 @@ def _find_data_start_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> 
 
 def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> int:
     for row in range(sheet.nrows):
-        value = sheet.cell_value(row, 0)
+        value = _get_header_text_xls(sheet, row, 0)
         if _is_date_header(value):
-            # В xls: заголовок 'Дата' в A, данные начинаются со следующей строки,
-            # а т.к. дальше мы используем 1-based индексы для end_row, возвращаем row+2
+            # данные начинаются со следующей строки, а мы возвращаем 1-based для дальнейшей логики
             return row + 2
     raise ExcelReadError("Не найдена строка с заголовком 'Дата' в колонке A")
 
@@ -295,9 +300,9 @@ def _build_row_xlsx(
         sheet.cell(row=row, column=2).value,  # День недели
         sheet.cell(row=row, column=3).value,  # т/об
         sheet.cell(row=row, column=column_map["checks"] + 1).value,  # Чеки
-        None,  # пустая колонка (как было в твоей структуре)
+        None,  # пустая колонка
         sheet.cell(row=row, column=column_map["goods"] + 1).value,  # Товары
-        sheet.cell(row=row, column=5).value,  # фиксированная колонка (как в шаблоне)
+        sheet.cell(row=row, column=5).value,  # фиксированная колонка
         sheet.cell(row=row, column=column_map["gift_cert"] + 1).value,  # Подарочные сертификаты
     ]
     return values
@@ -330,7 +335,6 @@ def _validate_column_map(column_map: dict[str, int], header_rows: list[int]) -> 
 def _build_header_rows(data_start_row: int) -> list[int]:
     """
     Строит список строк-кандидатов для заголовков: от 1 до строки перед данными.
-    Это надёжнее, чем жёстко 2–5, если формат «плавает».
     """
     if data_start_row <= 1:
         return []
