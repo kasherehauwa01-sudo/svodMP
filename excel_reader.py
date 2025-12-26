@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import logging
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -228,6 +229,11 @@ def _find_data_start_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> 
             if _is_date_header(value):
                 return row + 1
 
+    # Fallback: если "Дата" не подписана, но дальше идут реальные даты
+    fallback_row = _find_date_like_row_xlsx(sheet)
+    if fallback_row:
+        return fallback_row
+
     raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
 
 
@@ -247,10 +253,17 @@ def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> int:
             if _is_date_header(value):
                 return row + 2
 
+    fallback_row = _find_date_like_row_xls(sheet)
+    if fallback_row:
+        return fallback_row
+
     raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
 
 
-def _find_data_end_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet, start_row: int) -> int:
+def _find_data_end_row_xlsx(
+    sheet: openpyxl.worksheet.worksheet.Worksheet,
+    start_row: int,
+) -> int:
     last_row = sheet.max_row
     return _trim_trailing_empty_rows(
         range(start_row, last_row + 1),
@@ -386,4 +399,44 @@ def _is_empty_value(value: Any) -> bool:
         return True
     if isinstance(value, str) and value == "":
         return True
+    return False
+
+
+def _find_date_like_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> Optional[int]:
+    max_row = sheet.max_row
+    max_col = min(sheet.max_column, 8)
+    for row in range(1, max_row + 1):
+        for col in range(1, max_col + 1):
+            value = sheet.cell(row=row, column=col).value
+            if _is_date_like_value(value):
+                return row + 1
+    return None
+
+
+def _find_date_like_row_xls(sheet: xlrd.sheet.Sheet) -> Optional[int]:
+    max_col = min(sheet.ncols, 8)
+    for row in range(sheet.nrows):
+        for col in range(max_col):
+            value = sheet.cell_value(row, col)
+            if _is_date_like_value(value):
+                return row + 2
+    return None
+
+
+def _is_date_like_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, datetime.datetime):
+        return True
+    if isinstance(value, datetime.date):
+        return True
+    text = str(value).strip()
+    if not text:
+        return False
+    for fmt in ("%d.%m.%y", "%d.%m.%Y"):
+        try:
+            datetime.datetime.strptime(text, fmt)
+            return True
+        except ValueError:
+            continue
     return False

@@ -169,7 +169,6 @@ def main() -> None:
     use_manual_period = st.checkbox("Указать период вручную", value=True)
     period_value = _render_period_picker() if use_manual_period else None
 
-    # Конфиг
     config = load_config("./config.json")
     config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
     config_credentials = config.get("credentials_path") or config.get("credentials") or ""
