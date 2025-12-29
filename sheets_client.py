@@ -20,8 +20,7 @@ class SheetInfo:
 
 def build_sheets_service(credentials_path: str):
     credentials = service_account.Credentials.from_service_account_file(
-        credentials_path,
-        scopes=SCOPES,
+        credentials_path, scopes=SCOPES
     )
     return build("sheets", "v4", credentials=credentials)
 
@@ -32,42 +31,28 @@ def fetch_sheet_infos(service, spreadsheet_id: str) -> list[SheetInfo]:
         .get(spreadsheetId=spreadsheet_id, fields="sheets.properties")
         .execute()
     )
-
-    sheet_infos: list[SheetInfo] = []
+    sheet_infos = []
     for sheet in response.get("sheets", []):
         props = sheet.get("properties", {})
-        sheet_id = props.get("sheetId")
-        title = props.get("title")
-
-        # На всякий случай защищаемся от None
-        if sheet_id is None or title is None:
-            continue
-
-        sheet_infos.append(
-            SheetInfo(
-                sheet_id=int(sheet_id),
-                title=str(title),
-            )
-        )
+        sheet_infos.append(SheetInfo(sheet_id=props.get("sheetId"), title=props.get("title")))
     return sheet_infos
 
 
 def find_mp_sheet(sheet_infos: list[SheetInfo], store_name: str) -> SheetInfo | None:
     store_lower = store_name.lower()
-
-    candidates = [info for info in sheet_infos if info.title and "мп" in info.title.lower()]
+    candidates = [
+        info
+        for info in sheet_infos
+        if info.title and "мп" in info.title.lower()
+    ]
 
     for info in candidates:
         title_lower = info.title.lower()
-
-        # отдельный кейс: "ЦУМ" может совпадать по-разному, но тут оставим явно
         if store_lower == "цум":
             if "цум" in title_lower:
                 return info
-
         if store_lower in title_lower:
             return info
-
     return None
 
 
@@ -80,12 +65,10 @@ def get_last_filled_row(service, spreadsheet_id: str, sheet_title: str) -> int:
         .execute()
     )
     values = response.get("values", [])
-
     last_row = 0
     for idx, row in enumerate(values, start=1):
         if any(cell not in (None, "") for cell in row):
             last_row = idx
-
     return last_row
 
 
@@ -114,18 +97,14 @@ def apply_green_fill(service, spreadsheet_id: str, sheet_id: int, row_index: int
 
 
 def insert_row(service, spreadsheet_id: str, sheet_id: int, row_index: int) -> None:
-    """
-    Вставляет 1 строку перед row_index (row_index — 1-based).
-    Sheets API использует 0-based индексы и endIndex exclusive.
-    """
     requests = [
         {
             "insertDimension": {
                 "range": {
                     "sheetId": sheet_id,
                     "dimension": "ROWS",
-                    "startIndex": row_index - 1,  # 0-based
-                    "endIndex": row_index,        # exclusive
+                    "startIndex": row_index - 1,
+                    "endIndex": row_index,
                 },
                 "inheritFromBefore": False,
             }
@@ -144,17 +123,6 @@ def update_summary_row(
     data_start: int,
     data_end: int,
 ) -> None:
-    """
-    Заполняет summary-строку формулами по диапазону данных.
-    Колонки: A..H
-      A: период
-      C: SUM(C)
-      D: SUM(D)
-      E: AVERAGE(E)
-      F: SUM(F)
-      G: SUM(G)
-      H: SUM(H)
-    """
     values = [
         [
             period_label,
@@ -202,7 +170,6 @@ def update_formulas(
     start_row: int,
     end_row: int,
 ) -> None:
-    # Колонка E: формула по строкам
     formulas = [[f"=C{row}/D{row}"] for row in range(start_row, end_row + 1)]
     range_name = f"'{sheet_title}'!E{start_row}:E{end_row}"
     body = {"values": formulas}

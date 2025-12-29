@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import calendar
+import datetime
 import logging
 import re
 from dataclasses import dataclass
@@ -15,8 +17,8 @@ from sheets_client import (
     find_mp_sheet,
     get_last_filled_row,
     insert_row,
-    update_formulas,
     update_summary_row,
+    update_formulas,
     update_values,
 )
 
@@ -40,12 +42,12 @@ MONTH_REGEX = re.compile(rf"({'|'.join(MONTHS)})\s+(\d{{4}})", re.IGNORECASE)
 
 STORE_ALIASES = {
     "Авиаторов": ["авиаторов"],
-    "Козловская": ["козловская"],
-    "Диамант": ["диамант", "цитрус"],  # если "Цитрус" в названии файла — это Диамант
+    "Козловская": ["козловская", "санвэй", "санвей"],
+    "Диамант": ["диамант", "цитрус"],
     "Привоз": ["привоз"],
     "Бахтурова": ["бахтурова"],
     "Ахтубинск": ["ахтубинск"],
-    "СтройГрад": ["стройград", "строй град"],
+    "СтройГрад": ["стройград", "строй град", "стройград"],
     "Европа": ["европа"],
     "Парк Хаус": ["парк хаус", "паркхаус", "пх"],
     "ЦУМ": ["цум", "советница"],
@@ -83,7 +85,6 @@ def process_directory(
         if not Path(credentials).exists():
             logger.error("Файл credentials не найден: %s", credentials)
             return
-
         try:
             service = build_sheets_service(credentials)
             sheet_infos = fetch_sheet_infos(service, spreadsheet_id)
@@ -122,58 +123,48 @@ def process_directory(
             logger.warning("%s: нет данных для переноса", file_path.name)
             continue
 
+        rows_to_write = _prepare_rows(excel_data.rows, context.period)
+        if not rows_to_write:
+            logger.warning("%s: после фильтрации нет данных для переноса", file_path.name)
+            continue
+
         if dry_run:
-            logger.info("[DRY RUN] Перенесли бы %s строк", len(excel_data.rows))
+            logger.info("[DRY RUN] Перенесли бы %s строк", len(rows_to_write))
             continue
 
         sheet_info = find_mp_sheet(sheet_infos, context.store)
         if not sheet_info:
-            logger.error(
-                "%s: не найден лист МП для магазина '%s'",
-                file_path.name,
-                context.store,
-            )
+            logger.error("%s: не найден лист МП для магазина '%s'", file_path.name, context.store)
             continue
 
         last_row = get_last_filled_row(service, spreadsheet_id, sheet_info.title)
-
-        # Добавляем summary-строку, затем пишем данные ниже
         summary_row = last_row + 1
         data_start = summary_row + 1
-        data_end = summary_row + len(excel_data.rows)
+        data_end = summary_row + len(rows_to_write)
 
         logger.info(
-            "Запись в лист '%s': строки %s-%s (summary=%s)",
+            "Запись в лист '%s': строки %s-%s",
             sheet_info.title,
             data_start,
             data_end,
-            summary_row,
         )
 
-        # 1) вставить строку под summary, чтобы не перетирать существующее
         insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
-
-        # 2) подсветить summary (маркер загрузки)
         apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
-
-        # 3) заполнить summary-строку (период + формулы по диапазону данных)
+        period_label = context.period.split()[0]
         update_summary_row(
-            service=service,
-            spreadsheet_id=spreadsheet_id,
-            sheet_title=sheet_info.title,
-            summary_row=summary_row,
-            period_label=context.period,
-            data_start=data_start,
-            data_end=data_end,
+            service,
+            spreadsheet_id,
+            sheet_info.title,
+            summary_row,
+            period_label,
+            data_start,
+            data_end,
         )
-
-        # 4) загрузить данные
-        update_values(service, spreadsheet_id, sheet_info.title, data_start, excel_data.rows)
-
-        # 5) протянуть формулы (колонка E)
+        update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
         update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
 
-        logger.info("%s: успешно перенесено строк: %s", file_path.name, len(excel_data.rows))
+        logger.info("%s: успешно перенесено строк: %s", file_path.name, len(rows_to_write))
 
 
 def _build_context(file_path: Path, fallback_period: str | None, dry_run: bool) -> FileContext:
@@ -182,12 +173,12 @@ def _build_context(file_path: Path, fallback_period: str | None, dry_run: bool) 
         raise ValueError("Не удалось определить магазин по названию")
 
     detected_period = _detect_period(file_path.stem)
-    period_value = detected_period or fallback_period
-    if not period_value:
-        raise ValueError("Не найден период в названии и не указан период вручную")
+    period = detected_period or fallback_period
+    if not period:
+        raise ValueError("Не найден период в названии и не указан --period")
 
-    new_path = _maybe_rename(file_path, period_value, detected_period, dry_run)
-    return FileContext(path=new_path, store=store, period=period_value)
+    new_path = _maybe_rename(file_path, period, detected_period, dry_run)
+    return FileContext(path=new_path, store=store, period=period)
 
 
 def _detect_store(filename: str) -> str | None:
@@ -231,3 +222,63 @@ def _maybe_rename(
     logger.info("Переименование файла: %s -> %s", file_path.name, new_name)
     file_path.rename(new_path)
     return new_path
+
+
+def _prepare_rows(rows: list[list], period: str) -> list[list]:
+    """Форматирует дату и ограничивает количество строк по числу дней в месяце."""
+    year, month = _parse_period(period)
+    days_in_month = calendar.monthrange(year, month)[1]
+    prepared: list[list] = []
+    for row in rows:
+        if len(prepared) >= days_in_month:
+            break
+        new_row = list(row)
+        new_row[0] = _format_date_value(new_row[0])
+        prepared.append(new_row)
+    return prepared
+
+
+def _parse_period(period: str) -> tuple[int, int]:
+    """Парсит период в формате 'Месяц ГГГГ'."""
+    parts = period.split()
+    if len(parts) < 2:
+        raise ValueError(f"Некорректный период: {period}")
+    month_name = parts[0].lower()
+    year = int(parts[1])
+    month_map = {
+        "январь": 1,
+        "февраль": 2,
+        "март": 3,
+        "апрель": 4,
+        "май": 5,
+        "июнь": 6,
+        "июль": 7,
+        "август": 8,
+        "сентябрь": 9,
+        "октябрь": 10,
+        "ноябрь": 11,
+        "декабрь": 12,
+    }
+    if month_name not in month_map:
+        raise ValueError(f"Неизвестный месяц в периоде: {period}")
+    return year, month_map[month_name]
+
+
+def _format_date_value(value) -> str | None:
+    """Приводит дату к формату ДД.ММ.ГГ."""
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value.strftime("%d.%m.%y")
+    if isinstance(value, datetime.date):
+        return value.strftime("%d.%m.%y")
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in ("%d.%m.%Y", "%d.%m.%y"):
+        try:
+            parsed = datetime.datetime.strptime(text, fmt)
+            return parsed.strftime("%d.%m.%y")
+        except ValueError:
+            continue
+    return text
