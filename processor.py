@@ -41,14 +41,14 @@ MONTH_REGEX = re.compile(rf"({'|'.join(MONTHS)})\s+(\d{{4}})", re.IGNORECASE)
 STORE_ALIASES = {
     "Авиаторов": ["авиаторов"],
     "Козловская": ["козловская"],
-    "Цитрус": ["цитрус"],
+    "Диамант": ["диамант", "цитрус"],  # если "Цитрус" в названии файла — это Диамант
     "Привоз": ["привоз"],
     "Бахтурова": ["бахтурова"],
     "Ахтубинск": ["ахтубинск"],
     "СтройГрад": ["стройград", "строй град"],
     "Европа": ["европа"],
-    "Парк Хаус": ["парк хаус", "паркхаус"],
-    "ЦУМ": ["цум"],
+    "Парк Хаус": ["парк хаус", "паркхаус", "пх"],
+    "ЦУМ": ["цум", "советница"],
     "Простор": ["простор"],
 }
 
@@ -150,13 +150,13 @@ def process_directory(
             summary_row,
         )
 
-        # 1) вставить строку под summary, чтобы не перетирать существующие формулы/итоги
+        # 1) вставить строку под summary, чтобы не перетирать существующее
         insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
 
-        # 2) подсветить summary (как маркер загрузки)
+        # 2) подсветить summary (маркер загрузки)
         apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
 
-        # 3) заполнить summary-строку (период + формулы по диапазону)
+        # 3) заполнить summary-строку (период + формулы по диапазону данных)
         update_summary_row(
             service=service,
             spreadsheet_id=spreadsheet_id,
@@ -170,7 +170,7 @@ def process_directory(
         # 4) загрузить данные
         update_values(service, spreadsheet_id, sheet_info.title, data_start, excel_data.rows)
 
-        # 5) протянуть формулы
+        # 5) протянуть формулы (колонка E)
         update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
 
         logger.info("%s: успешно перенесено строк: %s", file_path.name, len(excel_data.rows))

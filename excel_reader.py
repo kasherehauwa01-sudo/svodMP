@@ -27,6 +27,11 @@ KEYWORDS = {
     "gift_cert": "Подарочные сертификаты",
 }
 
+# Алиасы заголовков (на случай, если в файле другие формулировки)
+KEYWORD_ALIASES = {
+    "goods": ["штуки"],
+}
+
 # В разных файлах заголовки могут быть на 2–5 строках (fallback)
 HEADER_ROWS = [2, 3, 4, 5]
 
@@ -106,7 +111,7 @@ def _find_keyword_columns_xlsx(
             for key, keyword in KEYWORDS.items():
                 if key in column_map:
                     continue
-                if keyword.lower() in text:
+                if _keyword_in_text(key, keyword, text):
                     # Если заголовок в объединённой ячейке, берём левую границу
                     left_col = _get_merge_left_col_xlsx(sheet, header_row, col)
                     # В xlsx дальше используем +1 при чтении, поэтому тут 0-based
@@ -152,7 +157,7 @@ def _find_keyword_columns_xls(
             for key, keyword in KEYWORDS.items():
                 if key in column_map:
                     continue
-                if keyword.lower() in text:
+                if _keyword_in_text(key, keyword, text):
                     # В xls merged_cells уже 0-based
                     left_col = _get_merge_left_col_xls(sheet, row_index, col)
                     column_map[key] = left_col
@@ -385,6 +390,13 @@ def _normalize_header_value(value: Any) -> Optional[str]:
     text = str(value).replace("\u00a0", " ").strip().lower()
     text = " ".join(text.split())
     return text if text else None
+
+
+def _keyword_in_text(key: str, keyword: str, text: str) -> bool:
+    if keyword.lower() in text:
+        return True
+    aliases = KEYWORD_ALIASES.get(key, [])
+    return any(alias.lower() in text for alias in aliases)
 
 
 def _is_date_header(value: Any) -> bool:

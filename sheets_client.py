@@ -49,22 +49,22 @@ def fetch_sheet_infos(service, spreadsheet_id: str) -> list[SheetInfo]:
                 title=str(title),
             )
         )
-
     return sheet_infos
 
 
 def find_mp_sheet(sheet_infos: list[SheetInfo], store_name: str) -> SheetInfo | None:
     store_lower = store_name.lower()
 
-    candidates = [
-        info for info in sheet_infos if info.title and "мп" in info.title.lower()
-    ]
+    candidates = [info for info in sheet_infos if info.title and "мп" in info.title.lower()]
 
     for info in candidates:
         title_lower = info.title.lower()
+
+        # отдельный кейс: "ЦУМ" может совпадать по-разному, но тут оставим явно
         if store_lower == "цум":
             if "цум" in title_lower:
                 return info
+
         if store_lower in title_lower:
             return info
 
