@@ -190,8 +190,12 @@ def _copy_to_clipboard(text: str) -> None:
         .replace("$", "\\$")
         .replace("\n", "\\n")
     )
-    components.html(
-        f\"\"\"\n        <script>\n        navigator.clipboard.writeText(`{escaped_text}`);\n        </script>\n        \"\"\",\n        height=0,\n    )
+    html = (
+        "<script>"
+        f"navigator.clipboard.writeText(`{escaped_text}`);"
+        "</script>"
+    )
+    components.html(html, height=0)
 
 
 def _resolve_credentials_path(
