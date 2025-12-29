@@ -178,10 +178,6 @@ def main() -> None:
         st.success("Логи скопированы в буфер обмена")
 
 
-if __name__ == "__main__":
-    main()
-
-
 def _copy_to_clipboard(text: str) -> None:
     """Копирует текст в буфер обмена через компонент HTML."""
     escaped_text = (
@@ -232,3 +228,7 @@ def _resolve_credentials_path(
         return None
 
     return credentials_path
+
+
+if __name__ == "__main__":
+    main()
