@@ -32,15 +32,24 @@ def fetch_sheet_infos(service, spreadsheet_id: str) -> list[SheetInfo]:
         .get(spreadsheetId=spreadsheet_id, fields="sheets.properties")
         .execute()
     )
+
     sheet_infos: list[SheetInfo] = []
     for sheet in response.get("sheets", []):
         props = sheet.get("properties", {})
+        sheet_id = props.get("sheetId")
+        title = props.get("title")
+
+        # На всякий случай защищаемся от None
+        if sheet_id is None or title is None:
+            continue
+
         sheet_infos.append(
             SheetInfo(
-                sheet_id=int(props.get("sheetId")),
-                title=str(props.get("title")),
+                sheet_id=int(sheet_id),
+                title=str(title),
             )
         )
+
     return sheet_infos
 
 
@@ -58,6 +67,7 @@ def find_mp_sheet(sheet_infos: list[SheetInfo], store_name: str) -> SheetInfo | 
                 return info
         if store_lower in title_lower:
             return info
+
     return None
 
 
@@ -70,10 +80,12 @@ def get_last_filled_row(service, spreadsheet_id: str, sheet_title: str) -> int:
         .execute()
     )
     values = response.get("values", [])
+
     last_row = 0
     for idx, row in enumerate(values, start=1):
         if any(cell not in (None, "") for cell in row):
             last_row = idx
+
     return last_row
 
 
@@ -103,7 +115,8 @@ def apply_green_fill(service, spreadsheet_id: str, sheet_id: int, row_index: int
 
 def insert_row(service, spreadsheet_id: str, sheet_id: int, row_index: int) -> None:
     """
-    Вставляет 1 строку перед row_index (1-based).
+    Вставляет 1 строку перед row_index (row_index — 1-based).
+    Sheets API использует 0-based индексы и endIndex exclusive.
     """
     requests = [
         {
@@ -112,7 +125,7 @@ def insert_row(service, spreadsheet_id: str, sheet_id: int, row_index: int) -> N
                     "sheetId": sheet_id,
                     "dimension": "ROWS",
                     "startIndex": row_index - 1,  # 0-based
-                    "endIndex": row_index,        # 0-based end (exclusive)
+                    "endIndex": row_index,        # exclusive
                 },
                 "inheritFromBefore": False,
             }
@@ -127,31 +140,31 @@ def update_summary_row(
     spreadsheet_id: str,
     sheet_title: str,
     summary_row: int,
-    period: str,
-    data_start_row: int,
-    data_end_row: int,
+    period_label: str,
+    data_start: int,
+    data_end: int,
 ) -> None:
     """
     Заполняет summary-строку формулами по диапазону данных.
     Колонки: A..H
-    A: период
-    C: SUM(C)
-    D: SUM(D)
-    E: AVERAGE(E)
-    F: SUM(F)
-    G: SUM(G)
-    H: SUM(H)
+      A: период
+      C: SUM(C)
+      D: SUM(D)
+      E: AVERAGE(E)
+      F: SUM(F)
+      G: SUM(G)
+      H: SUM(H)
     """
     values = [
         [
-            period,
+            period_label,
             "",
-            f"=SUM(C{data_start_row}:C{data_end_row})",
-            f"=SUM(D{data_start_row}:D{data_end_row})",
-            f"=AVERAGE(E{data_start_row}:E{data_end_row})",
-            f"=SUM(F{data_start_row}:F{data_end_row})",
-            f"=SUM(G{data_start_row}:G{data_end_row})",
-            f"=SUM(H{data_start_row}:H{data_end_row})",
+            f"=SUM(C{data_start}:C{data_end})",
+            f"=SUM(D{data_start}:D{data_end})",
+            f"=AVERAGE(E{data_start}:E{data_end})",
+            f"=SUM(F{data_start}:F{data_end})",
+            f"=SUM(G{data_start}:G{data_end})",
+            f"=SUM(H{data_start}:H{data_end})",
         ]
     ]
     range_name = f"'{sheet_title}'!A{summary_row}:H{summary_row}"
@@ -189,7 +202,7 @@ def update_formulas(
     start_row: int,
     end_row: int,
 ) -> None:
-    # Колонка E: пример формулы (как было в main)
+    # Колонка E: формула по строкам
     formulas = [[f"=C{row}/D{row}"] for row in range(start_row, end_row + 1)]
     range_name = f"'{sheet_title}'!E{start_row}:E{end_row}"
     body = {"values": formulas}

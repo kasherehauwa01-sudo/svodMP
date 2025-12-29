@@ -137,7 +137,7 @@ def process_directory(
 
         last_row = get_last_filled_row(service, spreadsheet_id, sheet_info.title)
 
-        # Добавляем "итоговую/summary" строку, затем пишем данные ниже
+        # Добавляем summary-строку, затем пишем данные ниже
         summary_row = last_row + 1
         data_start = summary_row + 1
         data_end = summary_row + len(excel_data.rows)
@@ -156,15 +156,15 @@ def process_directory(
         # 2) подсветить summary (как маркер загрузки)
         apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
 
-        # 3) заполнить summary-строку (период + диапазон данных и т.п.)
+        # 3) заполнить summary-строку (период + формулы по диапазону)
         update_summary_row(
             service=service,
             spreadsheet_id=spreadsheet_id,
             sheet_title=sheet_info.title,
             summary_row=summary_row,
-            period=context.period,
-            data_start_row=data_start,
-            data_end_row=data_end,
+            period_label=context.period,
+            data_start=data_start,
+            data_end=data_end,
         )
 
         # 4) загрузить данные

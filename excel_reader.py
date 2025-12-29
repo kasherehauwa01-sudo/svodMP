@@ -49,7 +49,7 @@ def _read_xlsx(file_path: Path) -> ExcelData:
 
     data_start_row = _find_data_start_row_xlsx(sheet)
 
-    # Ищем заголовки во всех строках до строки "Дата", иначе fallback на HEADER_ROWS
+    # Ищем заголовки во всех строках до строки данных, иначе fallback на HEADER_ROWS
     header_rows = _build_header_rows(data_start_row) or HEADER_ROWS
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
 
@@ -430,9 +430,11 @@ def _is_date_like_value(value: Any) -> bool:
         return True
     if isinstance(value, datetime.date):
         return True
+
     text = str(value).strip()
     if not text:
         return False
+
     for fmt in ("%d.%m.%y", "%d.%m.%Y"):
         try:
             datetime.datetime.strptime(text, fmt)
