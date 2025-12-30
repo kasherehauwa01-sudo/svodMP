@@ -353,7 +353,7 @@ def _get_header_text_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> Optiona
 
 def _find_date_like_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> Optional[int]:
     max_row = sheet.max_row
-    max_col = min(sheet.max_column, 8)
+    max_col = sheet.max_column
     for row in range(1, max_row + 1):
         for col in range(1, max_col + 1):
             value = sheet.cell(row=row, column=col).value
@@ -363,7 +363,7 @@ def _find_date_like_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> O
 
 
 def _find_date_like_row_xls(sheet: xlrd.sheet.Sheet) -> Optional[int]:
-    max_col = min(sheet.ncols, 8)
+    max_col = sheet.ncols
     for row in range(sheet.nrows):
         for col in range(max_col):
             value = sheet.cell_value(row, col)
