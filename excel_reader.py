@@ -149,6 +149,34 @@ def _get_merge_left_col_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> int:
     return col
 
 
+def _get_header_text_xlsx(
+    sheet: openpyxl.worksheet.worksheet.Worksheet,
+    row: int,
+    col: int,
+) -> Optional[str]:
+    value = sheet.cell(row=row, column=col).value
+    text = _normalize_header_value(value)
+    if text:
+        return text
+    for cell_range in sheet.merged_cells.ranges:
+        if cell_range.min_row <= row <= cell_range.max_row and cell_range.min_col <= col <= cell_range.max_col:
+            merged_value = sheet.cell(row=cell_range.min_row, column=cell_range.min_col).value
+            return _normalize_header_value(merged_value)
+    return None
+
+
+def _get_header_text_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> Optional[str]:
+    value = sheet.cell_value(row, col)
+    text = _normalize_header_value(value)
+    if text:
+        return text
+    for rlo, rhi, clo, chi in sheet.merged_cells:
+        if rlo <= row < rhi and clo <= col < chi:
+            merged_value = sheet.cell_value(rlo, clo)
+            return _normalize_header_value(merged_value)
+    return None
+
+
 def _find_data_start_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> int:
     max_row = sheet.max_row
     for row in range(1, max_row + 1):
@@ -321,34 +349,6 @@ def _is_empty_value(value: Any) -> bool:
     if isinstance(value, str) and value == "":
         return True
     return False
-
-
-def _get_header_text_xlsx(
-    sheet: openpyxl.worksheet.worksheet.Worksheet,
-    row: int,
-    col: int,
-) -> Optional[str]:
-    value = sheet.cell(row=row, column=col).value
-    text = _normalize_header_value(value)
-    if text:
-        return text
-    for cell_range in sheet.merged_cells.ranges:
-        if cell_range.min_row <= row <= cell_range.max_row and cell_range.min_col <= col <= cell_range.max_col:
-            merged_value = sheet.cell(row=cell_range.min_row, column=cell_range.min_col).value
-            return _normalize_header_value(merged_value)
-    return None
-
-
-def _get_header_text_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> Optional[str]:
-    value = sheet.cell_value(row, col)
-    text = _normalize_header_value(value)
-    if text:
-        return text
-    for rlo, rhi, clo, chi in sheet.merged_cells:
-        if rlo <= row < rhi and clo <= col < chi:
-            merged_value = sheet.cell_value(rlo, clo)
-            return _normalize_header_value(merged_value)
-    return None
 
 
 def _find_date_like_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> Optional[int]:

@@ -16,6 +16,8 @@ from sheets_client import (
     fetch_sheet_infos,
     find_mp_sheet,
     get_last_filled_row,
+    insert_row,
+    update_summary_row,
     update_formulas,
     update_values,
 )
@@ -45,7 +47,7 @@ STORE_ALIASES = {
     "Привоз": ["привоз"],
     "Бахтурова": ["бахтурова"],
     "Ахтубинск": ["ахтубинск"],
-    "СтройГрад": ["стройград", "строй град"],
+    "СтройГрад": ["стройград", "строй град", "стройград"],
     "Европа": ["европа"],
     "Парк Хаус": ["парк хаус", "паркхаус", "пх"],
     "ЦУМ": ["цум", "советница"],
@@ -136,20 +138,31 @@ def process_directory(
             continue
 
         last_row = get_last_filled_row(service, spreadsheet_id, sheet_info.title)
-        start_row = last_row + 1
-        end_row = start_row + len(rows_to_write) - 1
+        summary_row = last_row + 1
+        data_start = summary_row + 1
+        data_end = summary_row + len(rows_to_write)
 
         logger.info(
             "Запись в лист '%s': строки %s-%s",
             sheet_info.title,
-            start_row,
-            end_row,
+            data_start,
+            data_end,
         )
 
-        if start_row > 1:
-            apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, start_row)
-        update_values(service, spreadsheet_id, sheet_info.title, start_row, rows_to_write)
-        update_formulas(service, spreadsheet_id, sheet_info.title, start_row, end_row)
+        insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+        apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+        period_label = context.period.split()[0]
+        update_summary_row(
+            service,
+            spreadsheet_id,
+            sheet_info.title,
+            summary_row,
+            period_label,
+            data_start,
+            data_end,
+        )
+        update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
+        update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
 
         logger.info("%s: успешно перенесено строк: %s", file_path.name, len(rows_to_write))
 
@@ -162,7 +175,7 @@ def _build_context(file_path: Path, fallback_period: str | None, dry_run: bool) 
     detected_period = _detect_period(file_path.stem)
     period = detected_period or fallback_period
     if not period:
-        raise ValueError("Не найден период в названии и не указан период вручную")
+        raise ValueError("Не найден период в названии и не указан --period")
 
     new_path = _maybe_rename(file_path, period, detected_period, dry_run)
     return FileContext(path=new_path, store=store, period=period)
@@ -252,27 +265,20 @@ def _parse_period(period: str) -> tuple[int, int]:
 
 
 def _format_date_value(value) -> str | None:
-    """Приводит дату к формату ДД.ММ.ГГГГ."""
+    """Приводит дату к формату ДД.ММ.ГГ."""
     if value is None:
         return None
     if isinstance(value, datetime.datetime):
-        return value.strftime("%d.%m.%Y")
+        return value.strftime("%d.%m.%y")
     if isinstance(value, datetime.date):
-        return value.strftime("%d.%m.%Y")
-    if isinstance(value, (int, float)):
-        try:
-            base = datetime.datetime(1899, 12, 30)
-            converted = base + datetime.timedelta(days=float(value))
-            return converted.strftime("%d.%m.%Y")
-        except (OverflowError, ValueError):
-            return str(value)
+        return value.strftime("%d.%m.%y")
     text = str(value).strip()
     if not text:
         return None
     for fmt in ("%d.%m.%Y", "%d.%m.%y"):
         try:
             parsed = datetime.datetime.strptime(text, fmt)
-            return parsed.strftime("%d.%m.%Y")
+            return parsed.strftime("%d.%m.%y")
         except ValueError:
             continue
     return text

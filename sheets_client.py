@@ -51,9 +51,6 @@ def find_mp_sheet(sheet_infos: list[SheetInfo], store_name: str) -> SheetInfo | 
         if store_lower == "цум":
             if "цум" in title_lower:
                 return info
-        if store_lower == "диамант":
-            if "цитрус" in title_lower:
-                return info
         if store_lower in title_lower:
             return info
     return None
@@ -99,6 +96,55 @@ def apply_green_fill(service, spreadsheet_id: str, sheet_id: int, row_index: int
     service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 
+def insert_row(service, spreadsheet_id: str, sheet_id: int, row_index: int) -> None:
+    requests = [
+        {
+            "insertDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_index - 1,
+                    "endIndex": row_index,
+                },
+                "inheritFromBefore": False,
+            }
+        }
+    ]
+    body = {"requests": requests}
+    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+
+
+def update_summary_row(
+    service,
+    spreadsheet_id: str,
+    sheet_title: str,
+    summary_row: int,
+    period_label: str,
+    data_start: int,
+    data_end: int,
+) -> None:
+    values = [
+        [
+            period_label,
+            "",
+            f"=SUM(C{data_start}:C{data_end})",
+            f"=SUM(D{data_start}:D{data_end})",
+            f"=AVERAGE(E{data_start}:E{data_end})",
+            f"=SUM(F{data_start}:F{data_end})",
+            f"=SUM(G{data_start}:G{data_end})",
+            f"=SUM(H{data_start}:H{data_end})",
+        ]
+    ]
+    range_name = f"'{sheet_title}'!A{summary_row}:H{summary_row}"
+    body = {"values": values}
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=range_name,
+        valueInputOption="USER_ENTERED",
+        body=body,
+    ).execute()
+
+
 def update_values(
     service,
     spreadsheet_id: str,
@@ -124,10 +170,7 @@ def update_formulas(
     start_row: int,
     end_row: int,
 ) -> None:
-    formulas = [
-        [f"=IF(AND(ISNUMBER(C{row}),ISNUMBER(D{row}),D{row}<>0),C{row}/D{row},\"\")"]
-        for row in range(start_row, end_row + 1)
-    ]
+    formulas = [[f"=C{row}/D{row}"] for row in range(start_row, end_row + 1)]
     range_name = f"'{sheet_title}'!E{start_row}:E{end_row}"
     body = {"values": formulas}
     service.spreadsheets().values().update(
