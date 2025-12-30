@@ -118,7 +118,11 @@ def main() -> None:
 
     spreadsheet_id = config_sheet
     credentials_path = config_credentials if config_credentials else "./service_account.json"
-    credentials_upload = None
+    credentials_upload = st.file_uploader(
+        "Загрузите service account JSON (если не используете Secrets)",
+        type=["json"],
+        accept_multiple_files=False,
+    )
 
     if uploaded_files:
         st.markdown("**Загруженные файлы:**")
