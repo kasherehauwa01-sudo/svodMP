@@ -43,7 +43,7 @@ def _convert_xls_to_xlsx(file_path: Path) -> Path:
     """Конвертирует xls в xlsx для повторной попытки чтения."""
     workbook = xlrd.open_workbook(file_path)
     sheet = workbook.sheet_by_index(0)
-    target_path = file_path.with_suffix(".xlsx")
+    target_path = file_path.with_name(f"{file_path.stem}_copy.xlsx")
     output = openpyxl.Workbook()
     out_sheet = output.active
     out_sheet.title = sheet.name
@@ -63,7 +63,7 @@ def read_excel(file_path: Path) -> ExcelData:
         except ExcelReadError as exc:
             if "Не найдена строка" in str(exc):
                 converted = _convert_xls_to_xlsx(file_path)
-                logger.info("Файл %s конвертирован в %s", file_path.name, converted.name)
+                logger.info("Файл %s конвертирован в %s", file_path.name, converted)
                 return _read_xlsx(converted)
             raise
     raise ExcelReadError(f"Неподдерживаемое расширение: {file_path.suffix}")
@@ -408,26 +408,6 @@ def _normalize_text_for_header(text: str) -> str:
     return " ".join(text.split())
 
 
-def _find_day_header_xlsx(
-    sheet: openpyxl.worksheet.worksheet.Worksheet,
-) -> Optional[tuple[int, int]]:
-    for row in range(1, sheet.max_row + 1):
-        for col in range(1, min(sheet.max_column, 26) + 1):
-            value = _get_header_text_xlsx(sheet, row, col)
-            if _is_day_header(value):
-                return row, col
-    return None
-
-
-def _find_day_header_xls(sheet: xlrd.sheet.Sheet) -> Optional[tuple[int, int]]:
-    for row in range(sheet.nrows):
-        for col in range(min(sheet.ncols, 26)):
-            value = _get_header_text_xls(sheet, row, col)
-            if _is_day_header(value):
-                return row, col
-    return None
-
-
 def _is_empty_value(value: Any) -> bool:
     if value is None:
         return True
@@ -519,3 +499,23 @@ def _is_date_like_value(value: Any) -> bool:
         except ValueError:
             continue
     return False
+
+
+def _find_day_header_xlsx(
+    sheet: openpyxl.worksheet.worksheet.Worksheet,
+) -> Optional[tuple[int, int]]:
+    for row in range(1, sheet.max_row + 1):
+        for col in range(1, min(sheet.max_column, 26) + 1):
+            value = _get_header_text_xlsx(sheet, row, col)
+            if _is_day_header(value):
+                return row, col
+    return None
+
+
+def _find_day_header_xls(sheet: xlrd.sheet.Sheet) -> Optional[tuple[int, int]]:
+    for row in range(sheet.nrows):
+        for col in range(min(sheet.ncols, 26)):
+            value = _get_header_text_xls(sheet, row, col)
+            if _is_day_header(value):
+                return row, col
+    return None
