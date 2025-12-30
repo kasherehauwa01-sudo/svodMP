@@ -224,7 +224,10 @@ def _resolve_credentials_path(
         credentials_file.write_bytes(credentials_upload.getbuffer())
         return str(credentials_file)
 
-    st.error("Не найдены credentials в Secrets. Добавьте credentials_json/credentials/google/gcp_service_account.")
+    if credentials_path and Path(credentials_path).exists():
+        return credentials_path
+
+    st.error("Не найдены credentials в Secrets или по пути credentials_path из config.json.")
     return None
 
 
