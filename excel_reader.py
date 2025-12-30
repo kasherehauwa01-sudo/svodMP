@@ -184,6 +184,9 @@ def _find_data_start_row_xlsx(
     fallback_row = _find_date_like_row_xlsx(sheet)
     if fallback_row:
         return fallback_row, date_col, day_col
+    column_a_row = _find_date_like_in_column_xlsx(sheet)
+    if column_a_row:
+        return column_a_row, date_col, day_col
     raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
 
 
@@ -214,6 +217,9 @@ def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int, int]:
     fallback_row = _find_date_like_row_xls(sheet)
     if fallback_row:
         return fallback_row, date_col, day_col
+    column_a_row = _find_date_like_in_column_xls(sheet)
+    if column_a_row:
+        return column_a_row, date_col, day_col
     raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
 
 
@@ -444,6 +450,23 @@ def _find_date_like_row_xls(sheet: xlrd.sheet.Sheet) -> Optional[int]:
             value = sheet.cell_value(row, col)
             if _is_date_like_value(value):
                 return row + 2
+    return None
+
+
+def _find_date_like_in_column_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> Optional[int]:
+    max_row = sheet.max_row
+    for row in range(1, max_row + 1):
+        value = sheet.cell(row=row, column=1).value
+        if _is_date_like_value(value):
+            return row
+    return None
+
+
+def _find_date_like_in_column_xls(sheet: xlrd.sheet.Sheet) -> Optional[int]:
+    for row in range(sheet.nrows):
+        value = sheet.cell_value(row, 0)
+        if _is_date_like_value(value):
+            return row + 1
     return None
 
 
