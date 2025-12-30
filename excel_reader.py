@@ -170,6 +170,11 @@ def _find_data_start_row_xlsx(
             value = _get_header_text_xlsx(sheet, row, col)
             if _is_date_header(value):
                 return row + 1, col - 1, col
+    for row in range(1, max_row + 1):
+        for col in range(1, sheet.max_column + 1):
+            value = _get_header_text_xlsx(sheet, row, col)
+            if _is_date_header(value):
+                return row + 1, max(col - 2, 0), max(col - 1, 0)
     day_header = _find_day_header_xlsx(sheet)
     if day_header:
         header_row, day_header_col = day_header
@@ -195,6 +200,11 @@ def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int, int]:
             value = _get_header_text_xls(sheet, row, col)
             if _is_date_header(value):
                 return row + 2, col, col + 1
+    for row in range(sheet.nrows):
+        for col in range(sheet.ncols):
+            value = _get_header_text_xls(sheet, row, col)
+            if _is_date_header(value):
+                return row + 2, max(col - 1, 0), col
     day_header = _find_day_header_xls(sheet)
     if day_header:
         header_row, day_header_col = day_header
