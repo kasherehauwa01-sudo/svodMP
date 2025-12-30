@@ -16,6 +16,8 @@ from sheets_client import (
     fetch_sheet_infos,
     find_mp_sheet,
     get_last_filled_row,
+    insert_row,
+    update_summary_row,
     update_formulas,
     update_values,
 )
@@ -136,19 +138,31 @@ def process_directory(
             continue
 
         last_row = get_last_filled_row(service, spreadsheet_id, sheet_info.title)
-        start_row = last_row + 1
-        end_row = start_row + len(rows_to_write) - 1
+        summary_row = last_row + 1
+        data_start = summary_row + 1
+        data_end = summary_row + len(rows_to_write)
 
         logger.info(
             "Запись в лист '%s': строки %s-%s",
             sheet_info.title,
-            start_row,
-            end_row,
+            data_start,
+            data_end,
         )
 
-        # Заливку не применяем по требованиям.
-        update_values(service, spreadsheet_id, sheet_info.title, start_row, rows_to_write)
-        update_formulas(service, spreadsheet_id, sheet_info.title, start_row, end_row)
+        insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+        apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+        period_label = context.period.split()[0]
+        update_summary_row(
+            service,
+            spreadsheet_id,
+            sheet_info.title,
+            summary_row,
+            period_label,
+            data_start,
+            data_end,
+        )
+        update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
+        update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
 
         logger.info("%s: успешно перенесено строк: %s", file_path.name, len(rows_to_write))
 

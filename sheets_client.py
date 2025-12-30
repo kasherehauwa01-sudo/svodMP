@@ -99,6 +99,55 @@ def apply_green_fill(service, spreadsheet_id: str, sheet_id: int, row_index: int
     service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 
+def insert_row(service, spreadsheet_id: str, sheet_id: int, row_index: int) -> None:
+    requests = [
+        {
+            "insertDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_index - 1,
+                    "endIndex": row_index,
+                },
+                "inheritFromBefore": False,
+            }
+        }
+    ]
+    body = {"requests": requests}
+    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+
+
+def update_summary_row(
+    service,
+    spreadsheet_id: str,
+    sheet_title: str,
+    summary_row: int,
+    period_label: str,
+    data_start: int,
+    data_end: int,
+) -> None:
+    values = [
+        [
+            period_label,
+            "",
+            f"=SUM(C{data_start}:C{data_end})",
+            f"=SUM(D{data_start}:D{data_end})",
+            f"=AVERAGE(E{data_start}:E{data_end})",
+            f"=SUM(F{data_start}:F{data_end})",
+            f"=SUM(G{data_start}:G{data_end})",
+            f"=SUM(H{data_start}:H{data_end})",
+        ]
+    ]
+    range_name = f"'{sheet_title}'!A{summary_row}:H{summary_row}"
+    body = {"values": values}
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=range_name,
+        valueInputOption="USER_ENTERED",
+        body=body,
+    ).execute()
+
+
 def update_values(
     service,
     spreadsheet_id: str,
