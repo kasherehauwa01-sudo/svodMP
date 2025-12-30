@@ -111,26 +111,18 @@ def main() -> None:
     if use_manual_period:
         period_value = _render_period_picker()
 
-    # Подтягиваем значения из config.json, но даём возможность переопределить в UI
+    # Подтягиваем значения из config.json
     config = load_config("./config.json")
     config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
     config_credentials = config.get("credentials_path") or config.get("credentials") or ""
 
-    spreadsheet_input = st.text_input(
-        "Spreadsheet ID или ссылка (если пусто — возьмём из config.json)",
-        value=config_sheet or "",
-    )
-    spreadsheet_id = extract_spreadsheet_id(spreadsheet_input) or config_sheet
+    spreadsheet_id = config_sheet
+    credentials_path = config_credentials if config_credentials else "./service_account.json"
+    credentials_upload = None
 
-    credentials_path = st.text_input(
-        "Путь к service account JSON",
-        value=config_credentials if config_credentials else "./service_account.json",
-    )
-    credentials_upload = st.file_uploader(
-        "Или загрузите service account JSON",
-        type=["json"],
-        accept_multiple_files=False,
-    )
+    if uploaded_files:
+        st.markdown("**Загруженные файлы:**")
+        st.write([uploaded_file.name for uploaded_file in uploaded_files])
 
     dry_run = st.checkbox("Dry run (без записи)", value=True)
 
@@ -201,15 +193,28 @@ def _resolve_credentials_path(
 ) -> str | None:
     """Возвращает путь к credentials (из Streamlit secrets, загрузки или пути)."""
     secrets = st.secrets
-    if "credentials_json" in secrets:
+    if "credentials_json" in secrets and isinstance(secrets["credentials_json"], str):
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
+        return str(credentials_file)
+
+    if "credentials" in secrets and isinstance(secrets["credentials"], str):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(secrets["credentials"], encoding="utf-8")
         return str(credentials_file)
 
     if "google" in secrets and isinstance(secrets["google"], dict):
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(
             json.dumps(secrets["google"], ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return str(credentials_file)
+
+    if "gcp_service_account" in secrets and isinstance(secrets["gcp_service_account"], dict):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(
+            json.dumps(secrets["gcp_service_account"], ensure_ascii=False),
             encoding="utf-8",
         )
         return str(credentials_file)
