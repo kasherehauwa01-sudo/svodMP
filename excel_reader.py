@@ -39,11 +39,33 @@ class ExcelReadError(Exception):
     pass
 
 
+def _convert_xls_to_xlsx(file_path: Path) -> Path:
+    """Конвертирует xls в xlsx для повторной попытки чтения."""
+    workbook = xlrd.open_workbook(file_path)
+    sheet = workbook.sheet_by_index(0)
+    target_path = file_path.with_suffix(".xlsx")
+    output = openpyxl.Workbook()
+    out_sheet = output.active
+    out_sheet.title = sheet.name
+    for row in range(sheet.nrows):
+        for col in range(sheet.ncols):
+            out_sheet.cell(row=row + 1, column=col + 1, value=sheet.cell_value(row, col))
+    output.save(target_path)
+    return target_path
+
+
 def read_excel(file_path: Path) -> ExcelData:
     if file_path.suffix.lower() == ".xlsx":
         return _read_xlsx(file_path)
     if file_path.suffix.lower() == ".xls":
-        return _read_xls(file_path)
+        try:
+            return _read_xls(file_path)
+        except ExcelReadError as exc:
+            if "Не найдена строка" in str(exc):
+                converted = _convert_xls_to_xlsx(file_path)
+                logger.info("Файл %s конвертирован в %s", file_path.name, converted.name)
+                return _read_xlsx(converted)
+            raise
     raise ExcelReadError(f"Неподдерживаемое расширение: {file_path.suffix}")
 
 
