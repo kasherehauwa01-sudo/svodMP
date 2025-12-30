@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import logging
+import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -366,6 +367,7 @@ def _is_date_header(value: Any) -> bool:
     if value is None:
         return False
     text = str(value).strip().lower()
+    text = _normalize_text_for_header(text)
     return "дата" in text
 
 
@@ -373,7 +375,15 @@ def _is_day_header(value: Any) -> bool:
     if value is None:
         return False
     text = str(value).strip().lower()
+    text = _normalize_text_for_header(text)
     return "день нед" in text
+
+
+def _normalize_text_for_header(text: str) -> str:
+    text = text.replace("\u00a0", " ")
+    text = text.replace("\ufeff", " ")
+    text = re.sub(r"[^\w]+", " ", text, flags=re.UNICODE)
+    return " ".join(text.split())
 
 
 def _find_day_header_xlsx(
