@@ -146,8 +146,7 @@ def process_directory(
             end_row,
         )
 
-        if start_row > 1:
-            apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, start_row)
+        # Заливку не применяем по требованиям.
         update_values(service, spreadsheet_id, sheet_info.title, start_row, rows_to_write)
         update_formulas(service, spreadsheet_id, sheet_info.title, start_row, end_row)
 
