@@ -124,10 +124,7 @@ def update_formulas(
     start_row: int,
     end_row: int,
 ) -> None:
-    formulas = [
-        [f"=IF(AND(ISNUMBER(C{row}),ISNUMBER(D{row}),D{row}<>0),C{row}/D{row},\"\")"]
-        for row in range(start_row, end_row + 1)
-    ]
+    formulas = [[f"=C{row}/D{row}"] for row in range(start_row, end_row + 1)]
     range_name = f"'{sheet_title}'!E{start_row}:E{end_row}"
     body = {"values": formulas}
     service.spreadsheets().values().update(
