@@ -295,7 +295,6 @@ def _build_row_xlsx(
     return values
 
 
-def _build_row_xls(sheet: xlrd.sheet.Sheet, row: int, column_map: dict[str, int]) -> list[Any]:
 def _build_row_xls(
     sheet: xlrd.sheet.Sheet,
     row: int,
