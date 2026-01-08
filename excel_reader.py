@@ -3,13 +3,10 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import logging
-import math
-import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import openpyxl
-import pandas as pd
 import xlrd
 
 logger = logging.getLogger(__name__)
@@ -22,8 +19,6 @@ class ExcelData:
     data_start_row: int
     data_end_row: int
     column_map: dict[str, int]
-    date_col: int
-    day_col: int
 
 
 KEYWORDS = {
@@ -41,59 +36,11 @@ class ExcelReadError(Exception):
     pass
 
 
-class _DataFrameSheet:
-    """Обертка над DataFrame для совместимости с xlrd-интерфейсом."""
-
-    def __init__(self, rows: list[list[Any]]) -> None:
-        self._rows = rows
-        self.nrows = len(rows)
-        self.ncols = max((len(row) for row in rows), default=0)
-        self.merged_cells: list[tuple[int, int, int, int]] = []
-
-    def cell_value(self, row: int, col: int) -> Any:
-        try:
-            value = self._rows[row][col]
-        except IndexError:
-            return None
-        if isinstance(value, float) and math.isnan(value):
-            return None
-        return value
-
-
-def read_excel_smart(path: Path) -> pd.DataFrame:
-    """Читает Excel с явным движком для .xls."""
-    if path.suffix.lower() == ".xls":
-        return pd.read_excel(path, engine="xlrd")
-    return pd.read_excel(path)
-
-
-def _convert_xls_to_xlsx(file_path: Path) -> Path:
-    """Конвертирует xls в xlsx для повторной попытки чтения."""
-    workbook = xlrd.open_workbook(file_path)
-    sheet = workbook.sheet_by_index(0)
-    target_path = file_path.with_name(f"{file_path.stem}_copy.xlsx")
-    output = openpyxl.Workbook()
-    out_sheet = output.active
-    out_sheet.title = sheet.name
-    for row in range(sheet.nrows):
-        for col in range(sheet.ncols):
-            out_sheet.cell(row=row + 1, column=col + 1, value=sheet.cell_value(row, col))
-    output.save(target_path)
-    return target_path
-
-
 def read_excel(file_path: Path) -> ExcelData:
     if file_path.suffix.lower() == ".xlsx":
         return _read_xlsx(file_path)
     if file_path.suffix.lower() == ".xls":
-        try:
-            return _read_xls(file_path)
-        except ExcelReadError as exc:
-            if "Не найдена строка" in str(exc):
-                converted = _convert_xls_to_xlsx(file_path)
-                logger.info("Файл %s конвертирован в %s", file_path.name, converted)
-                return _read_xlsx(converted)
-            raise
+        return _read_xls(file_path)
     raise ExcelReadError(f"Неподдерживаемое расширение: {file_path.suffix}")
 
 
@@ -101,13 +48,13 @@ def _read_xlsx(file_path: Path) -> ExcelData:
     workbook = openpyxl.load_workbook(file_path, data_only=True)
     sheet = workbook.active
 
-    data_start_row, date_col, day_col = _find_data_start_row_xlsx(sheet)
+    data_start_row = _find_data_start_row_xlsx(sheet)
     header_rows = _build_header_rows(data_start_row)
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
     column_map = _find_keyword_columns_xlsx(sheet, header_rows or HEADER_ROWS)
     data_end_row = _find_data_end_row_xlsx(sheet, data_start_row)
 
-    rows = _extract_rows_xlsx(sheet, data_start_row, data_end_row, column_map, date_col, day_col)
+    rows = _extract_rows_xlsx(sheet, data_start_row, data_end_row, column_map)
 
     return ExcelData(
         rows=rows,
@@ -115,24 +62,20 @@ def _read_xlsx(file_path: Path) -> ExcelData:
         data_start_row=data_start_row,
         data_end_row=data_end_row,
         column_map=column_map,
-        date_col=date_col,
-        day_col=day_col,
     )
 
 
 def _read_xls(file_path: Path) -> ExcelData:
-    dataframe = read_excel_smart(file_path)
-    rows = dataframe.where(pd.notna(dataframe), None).values.tolist()
-    sheet = _DataFrameSheet(rows)
-    sheet.merged_cells = _read_xls_merged_cells(file_path)
+    workbook = xlrd.open_workbook(file_path)
+    sheet = workbook.sheet_by_index(0)
 
-    data_start_row, date_col, day_col = _find_data_start_row_xls(sheet)
+    data_start_row = _find_data_start_row_xls(sheet)
     header_rows = _build_header_rows(data_start_row)
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
     column_map = _find_keyword_columns_xls(sheet, header_rows or HEADER_ROWS)
     data_end_row = _find_data_end_row_xls(sheet, data_start_row)
 
-    rows = _extract_rows_xls(sheet, data_start_row, data_end_row, column_map, date_col, day_col)
+    rows = _extract_rows_xls(sheet, data_start_row, data_end_row, column_map)
 
     return ExcelData(
         rows=rows,
@@ -140,8 +83,6 @@ def _read_xls(file_path: Path) -> ExcelData:
         data_start_row=data_start_row,
         data_end_row=data_end_row,
         column_map=column_map,
-        date_col=date_col,
-        day_col=day_col,
     )
 
 
@@ -208,82 +149,37 @@ def _get_merge_left_col_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> int:
     return col
 
 
-def _read_xls_merged_cells(file_path: Path) -> list[tuple[int, int, int, int]]:
-    """Считывает диапазоны объединённых ячеек из .xls."""
-    try:
-        workbook = xlrd.open_workbook(file_path, formatting_info=True)
-        sheet = workbook.sheet_by_index(0)
-        return list(sheet.merged_cells)
-    except Exception as exc:  # noqa: BLE001 - резервный путь, если формат не поддержан.
-        logger.warning("Не удалось считать объединённые ячейки из %s: %s", file_path.name, exc)
-        return []
-
-
-def _find_data_start_row_xlsx(
-    sheet: openpyxl.worksheet.worksheet.Worksheet,
-) -> tuple[int, int, int]:
+def _find_data_start_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> int:
     max_row = sheet.max_row
-    date_col = 0
-    day_col = 1
     for row in range(1, max_row + 1):
         value = _get_header_text_xlsx(sheet, row, 1)
         if _is_date_header(value):
-            return row + 1, date_col, day_col
+            return row + 1
     for row in range(1, max_row + 1):
-        for col in range(1, min(sheet.max_column, 26) + 1):
+        for col in range(1, min(sheet.max_column, 8) + 1):
             value = _get_header_text_xlsx(sheet, row, col)
             if _is_date_header(value):
-                return row + 1, col - 1, col
-    for row in range(1, max_row + 1):
-        for col in range(1, sheet.max_column + 1):
-            value = _get_header_text_xlsx(sheet, row, col)
-            if _is_date_header(value):
-                return row + 1, max(col - 2, 0), max(col - 1, 0)
-    day_header = _find_day_header_xlsx(sheet)
-    if day_header:
-        header_row, day_header_col = day_header
-        date_col = max(day_header_col - 2, 0)
-        day_col = day_header_col - 1
-        return header_row + 1, date_col, day_col
+                return row + 1
     fallback_row = _find_date_like_row_xlsx(sheet)
     if fallback_row:
-        return fallback_row, date_col, day_col
-    column_a_row = _find_date_like_in_column_xlsx(sheet)
-    if column_a_row:
-        return column_a_row, date_col, day_col
+        return fallback_row
     raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
 
 
-def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int, int]:
-    date_col = 0
-    day_col = 1
+def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> int:
     for row in range(sheet.nrows):
         value = _get_header_text_xls(sheet, row, 0)
         if _is_date_header(value):
-            return row + 2, date_col, day_col
-    max_col = min(sheet.ncols, 26)
+            return row + 2
+    max_col = min(sheet.ncols, 8)
     for row in range(sheet.nrows):
         for col in range(max_col):
             value = _get_header_text_xls(sheet, row, col)
             if _is_date_header(value):
-                return row + 2, col, col + 1
-    for row in range(sheet.nrows):
-        for col in range(sheet.ncols):
-            value = _get_header_text_xls(sheet, row, col)
-            if _is_date_header(value):
-                return row + 2, max(col - 1, 0), col
-    day_header = _find_day_header_xls(sheet)
-    if day_header:
-        header_row, day_header_col = day_header
-        date_col = max(day_header_col - 1, 0)
-        day_col = day_header_col
-        return header_row + 2, date_col, day_col
+                return row + 2
     fallback_row = _find_date_like_row_xls(sheet)
     if fallback_row:
-        return fallback_row, date_col, day_col
-    column_a_row = _find_date_like_in_column_xls(sheet)
-    if column_a_row:
-        return column_a_row, date_col, day_col
+        return fallback_row
     raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
 
 
@@ -332,12 +228,10 @@ def _extract_rows_xlsx(
     start_row: int,
     end_row: int,
     column_map: dict[str, int],
-    date_col: int,
-    day_col: int,
 ) -> list[list[Any]]:
     rows: list[list[Any]] = []
     for row in range(start_row, end_row + 1):
-        rows.append(_build_row_xlsx(sheet, row, column_map, date_col, day_col))
+        rows.append(_build_row_xlsx(sheet, row, column_map))
     return rows
 
 
@@ -346,25 +240,19 @@ def _extract_rows_xls(
     start_row: int,
     end_row: int,
     column_map: dict[str, int],
-    date_col: int,
-    day_col: int,
 ) -> list[list[Any]]:
     rows: list[list[Any]] = []
     for row in range(start_row - 1, end_row):
-        rows.append(_build_row_xls(sheet, row, column_map, date_col, day_col))
+        rows.append(_build_row_xls(sheet, row, column_map))
     return rows
 
 
 def _build_row_xlsx(
-    sheet: openpyxl.worksheet.worksheet.Worksheet,
-    row: int,
-    column_map: dict[str, int],
-    date_col: int,
-    day_col: int,
+    sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column_map: dict[str, int]
 ) -> list[Any]:
     values = [
-        sheet.cell(row=row, column=date_col + 1).value,
-        sheet.cell(row=row, column=day_col + 1).value,
+        sheet.cell(row=row, column=1).value,
+        sheet.cell(row=row, column=2).value,
         sheet.cell(row=row, column=3).value,
         sheet.cell(row=row, column=column_map["checks"] + 1).value,
         None,
@@ -375,16 +263,10 @@ def _build_row_xlsx(
     return values
 
 
-def _build_row_xls(
-    sheet: xlrd.sheet.Sheet,
-    row: int,
-    column_map: dict[str, int],
-    date_col: int,
-    day_col: int,
-) -> list[Any]:
+def _build_row_xls(sheet: xlrd.sheet.Sheet, row: int, column_map: dict[str, int]) -> list[Any]:
     values = [
-        sheet.cell_value(row, date_col),
-        sheet.cell_value(row, day_col),
+        sheet.cell_value(row, 0),
+        sheet.cell_value(row, 1),
         sheet.cell_value(row, 2),
         sheet.cell_value(row, column_map["checks"]),
         None,
@@ -430,23 +312,7 @@ def _is_date_header(value: Any) -> bool:
     if value is None:
         return False
     text = str(value).strip().lower()
-    text = _normalize_text_for_header(text)
     return "дата" in text
-
-
-def _is_day_header(value: Any) -> bool:
-    if value is None:
-        return False
-    text = str(value).strip().lower()
-    text = _normalize_text_for_header(text)
-    return "день нед" in text
-
-
-def _normalize_text_for_header(text: str) -> str:
-    text = text.replace("\u00a0", " ")
-    text = text.replace("\ufeff", " ")
-    text = re.sub(r"[^\w]+", " ", text, flags=re.UNICODE)
-    return " ".join(text.split())
 
 
 def _is_empty_value(value: Any) -> bool:
@@ -487,7 +353,7 @@ def _get_header_text_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> Optiona
 
 def _find_date_like_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> Optional[int]:
     max_row = sheet.max_row
-    max_col = sheet.max_column
+    max_col = min(sheet.max_column, 8)
     for row in range(1, max_row + 1):
         for col in range(1, max_col + 1):
             value = sheet.cell(row=row, column=col).value
@@ -497,29 +363,12 @@ def _find_date_like_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> O
 
 
 def _find_date_like_row_xls(sheet: xlrd.sheet.Sheet) -> Optional[int]:
-    max_col = sheet.ncols
+    max_col = min(sheet.ncols, 8)
     for row in range(sheet.nrows):
         for col in range(max_col):
             value = sheet.cell_value(row, col)
             if _is_date_like_value(value):
                 return row + 2
-    return None
-
-
-def _find_date_like_in_column_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet) -> Optional[int]:
-    max_row = sheet.max_row
-    for row in range(1, max_row + 1):
-        value = sheet.cell(row=row, column=1).value
-        if _is_date_like_value(value):
-            return row
-    return None
-
-
-def _find_date_like_in_column_xls(sheet: xlrd.sheet.Sheet) -> Optional[int]:
-    for row in range(sheet.nrows):
-        value = sheet.cell_value(row, 0)
-        if _is_date_like_value(value):
-            return row + 1
     return None
 
 
@@ -540,23 +389,3 @@ def _is_date_like_value(value: Any) -> bool:
         except ValueError:
             continue
     return False
-
-
-def _find_day_header_xlsx(
-    sheet: openpyxl.worksheet.worksheet.Worksheet,
-) -> Optional[tuple[int, int]]:
-    for row in range(1, sheet.max_row + 1):
-        for col in range(1, min(sheet.max_column, 26) + 1):
-            value = _get_header_text_xlsx(sheet, row, col)
-            if _is_day_header(value):
-                return row, col
-    return None
-
-
-def _find_day_header_xls(sheet: xlrd.sheet.Sheet) -> Optional[tuple[int, int]]:
-    for row in range(sheet.nrows):
-        for col in range(min(sheet.ncols, 26)):
-            value = _get_header_text_xls(sheet, row, col)
-            if _is_day_header(value):
-                return row, col
-    return None
