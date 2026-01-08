@@ -149,9 +149,17 @@ def _validate_credentials_json(credentials_path: str) -> bool:
     """Проверяет, что credentials файл содержит валидный JSON."""
     try:
         raw_content = Path(credentials_path).read_text(encoding="utf-8")
+        stripped_content = raw_content.strip()
+        if not stripped_content:
+            st.error("Файл credentials пустой. Загрузите полный JSON service account.")
+            return False
+        if not stripped_content.startswith("{"):
+            st.error("Файл credentials должен быть JSON-объектом. Проверьте формат файла.")
+            return False
         json.loads(raw_content)
     except (OSError, json.JSONDecodeError) as exc:
         st.error(f"Некорректный JSON в credentials файле: {exc}")
+        st.info("Проверьте, что вы загрузили JSON service account, а не пустой файл.")
         return False
     return True
 
