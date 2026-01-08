@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import os
 from pathlib import Path
 from typing import List
 
@@ -105,7 +106,13 @@ def _resolve_credentials_path(
     credentials_path: str,
     credentials_upload,
 ) -> str | None:
-    """Возвращает путь к credentials (из Streamlit secrets, загрузки или пути)."""
+    """Возвращает путь к credentials (из GitHub Secrets, Streamlit secrets, загрузки или пути)."""
+    github_secret = os.getenv("SVODMP")
+    if github_secret:
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(github_secret, encoding="utf-8")
+        return str(credentials_file)
+
     secrets = st.secrets
     if "credentials_json" in secrets and isinstance(secrets["credentials_json"], str):
         credentials_file = temp_path / "credentials.json"
@@ -141,7 +148,7 @@ def _resolve_credentials_path(
     if credentials_path and Path(credentials_path).exists():
         return credentials_path
 
-    st.error("Не найдены credentials в Secrets или по пути credentials_path из config.json.")
+    st.error("Не найдены credentials в GitHub Secrets (SVODMP), Secrets или по пути credentials_path из config.json.")
     return None
 
 
