@@ -169,8 +169,9 @@ def main() -> None:
     if use_manual_period:
         period_value = _render_period_picker()
 
-    spreadsheet_id = st.secrets.get("spreadsheet_id")
-    credentials_path = ""
+    config = load_config("./config.json")
+    spreadsheet_id = config.get("spreadsheet_id")
+    credentials_path = config.get("credentials_path") or config.get("credentials") or ""
 
     credentials_upload = st.file_uploader(
         "Загрузите service account JSON (если не используете Secrets)",
@@ -191,7 +192,7 @@ def main() -> None:
             st.error("Выберите файлы Excel")
             return
         if not spreadsheet_id:
-            st.error("Не найден Spreadsheet ID в Streamlit Secrets")
+            st.error("Не найден Spreadsheet ID в config.json")
             return
 
         st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
