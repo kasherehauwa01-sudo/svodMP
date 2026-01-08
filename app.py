@@ -104,52 +104,15 @@ def _copy_to_clipboard(text: str) -> None:
 def _resolve_credentials_path(
     temp_path: Path,
     credentials_env_var: str,
-    credentials_path: str,
-    credentials_upload,
 ) -> str | None:
-    """Возвращает путь к credentials (из переменной среды, Streamlit secrets, загрузки или пути)."""
+    """Возвращает путь к credentials (из переменной среды, подготовленной GitHub Secrets)."""
     github_secret = os.getenv(credentials_env_var) if credentials_env_var else None
     if github_secret:
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(github_secret, encoding="utf-8")
         return str(credentials_file)
 
-    secrets = st.secrets
-    if "credentials_json" in secrets and isinstance(secrets["credentials_json"], str):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
-        return str(credentials_file)
-
-    if "credentials" in secrets and isinstance(secrets["credentials"], str):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["credentials"], encoding="utf-8")
-        return str(credentials_file)
-
-    if "google" in secrets and isinstance(secrets["google"], dict):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(
-            json.dumps(secrets["google"], ensure_ascii=False),
-            encoding="utf-8",
-        )
-        return str(credentials_file)
-
-    if "gcp_service_account" in secrets and isinstance(secrets["gcp_service_account"], dict):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(
-            json.dumps(secrets["gcp_service_account"], ensure_ascii=False),
-            encoding="utf-8",
-        )
-        return str(credentials_file)
-
-    if credentials_upload:
-        credentials_file = temp_path / credentials_upload.name
-        credentials_file.write_bytes(credentials_upload.getbuffer())
-        return str(credentials_file)
-
-    if credentials_path and Path(credentials_path).exists():
-        return credentials_path
-
-    st.error("Не найдены credentials в переменной среды, Secrets или по пути credentials_path из config.json.")
+    st.error("Не найдены credentials в GitHub Secrets (переменная среды).")
     return None
 
 
@@ -201,14 +164,6 @@ def main() -> None:
     config = load_config("./config.json")
     spreadsheet_id = config.get("spreadsheet_id")
     credentials_env_var = config.get("credentials_env_var", "SVODMP")
-    credentials_path = config.get("credentials_path") or config.get("credentials") or ""
-
-    credentials_upload = st.file_uploader(
-        "Загрузите service account JSON (если не используете Secrets)",
-        type=["json"],
-        accept_multiple_files=False,
-    )
-
     dry_run = st.checkbox("Dry run (без записи)", value=True)
 
     if uploaded_files:
@@ -232,8 +187,6 @@ def main() -> None:
         credentials_to_use = _resolve_credentials_path(
             upload_dir,
             credentials_env_var=credentials_env_var,
-            credentials_path=credentials_path,
-            credentials_upload=credentials_upload,
         )
         if not credentials_to_use:
             return
