@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from googleapiclient.errors import HttpError
+from google.auth.exceptions import RefreshError
 
 from excel_reader import ExcelReadError, read_excel
 from sheets_client import (
@@ -88,6 +89,12 @@ def process_directory(
         try:
             service = build_sheets_service(credentials)
             sheet_infos = fetch_sheet_infos(service, spreadsheet_id)
+        except RefreshError as exc:
+            logger.error(
+                "Ошибка авторизации Google (RefreshError). Проверьте credentials и доступ к таблице: %s",
+                exc,
+            )
+            return
         except HttpError as exc:
             logger.error("Ошибка доступа к Google Sheets API: %s", exc)
             return
