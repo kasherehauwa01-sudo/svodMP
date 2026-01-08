@@ -112,7 +112,9 @@ def _resolve_credentials_path(
         credentials_file.write_text(github_secret, encoding="utf-8")
         return str(credentials_file)
 
-    st.error("Не найдены credentials в GitHub Secrets (переменная среды).")
+    env_label = credentials_env_var or "SVODMP"
+    st.error(f"Не найдены credentials в GitHub Secrets (переменная среды {env_label}).")
+    st.info("Убедитесь, что секрет задан как переменная окружения с JSON service account.")
     return None
 
 
