@@ -145,6 +145,17 @@ def _resolve_credentials_path(
     return None
 
 
+def _validate_credentials_json(credentials_path: str) -> bool:
+    """Проверяет, что credentials файл содержит валидный JSON."""
+    try:
+        raw_content = Path(credentials_path).read_text(encoding="utf-8")
+        json.loads(raw_content)
+    except (OSError, json.JSONDecodeError) as exc:
+        st.error(f"Некорректный JSON в credentials файле: {exc}")
+        return False
+    return True
+
+
 def main() -> None:
     setup_logging()
     setup_streamlit_logger()
@@ -207,6 +218,8 @@ def main() -> None:
             credentials_upload=credentials_upload,
         )
         if not credentials_to_use:
+            return
+        if not _validate_credentials_json(credentials_to_use):
             return
 
         process_directory(
