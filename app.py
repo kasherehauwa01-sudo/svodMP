@@ -171,7 +171,14 @@ def main() -> None:
         period_value = _render_period_picker()
 
     config = load_config("./config.json")
-    spreadsheet_id = extract_spreadsheet_id(config.get("spreadsheet_id"))
+    config_spreadsheet_id = extract_spreadsheet_id(config.get("spreadsheet_id"))
+    secrets_spreadsheet_id = extract_spreadsheet_id(st.secrets.get("spreadsheet_id"))
+    spreadsheet_input = st.text_input(
+        "Spreadsheet ID или ссылка на таблицу",
+        value=config_spreadsheet_id or secrets_spreadsheet_id or "",
+        help="Можно вставить ID или ссылку на таблицу Google Sheets.",
+    )
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_input)
     credentials_path = config.get("credentials_path") or config.get("credentials") or ""
 
     credentials_upload = st.file_uploader(
