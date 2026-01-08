@@ -3,11 +3,13 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import logging
+import math
 import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import openpyxl
+import pandas as pd
 import xlrd
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,32 @@ HEADER_ROWS = [2, 3, 4, 5]
 
 class ExcelReadError(Exception):
     pass
+
+
+class _DataFrameSheet:
+    """Обертка над DataFrame для совместимости с xlrd-интерфейсом."""
+
+    def __init__(self, rows: list[list[Any]]) -> None:
+        self._rows = rows
+        self.nrows = len(rows)
+        self.ncols = max((len(row) for row in rows), default=0)
+        self.merged_cells: list[tuple[int, int, int, int]] = []
+
+    def cell_value(self, row: int, col: int) -> Any:
+        try:
+            value = self._rows[row][col]
+        except IndexError:
+            return None
+        if isinstance(value, float) and math.isnan(value):
+            return None
+        return value
+
+
+def read_excel_smart(path: Path) -> pd.DataFrame:
+    """Читает Excel с явным движком для .xls."""
+    if path.suffix.lower() == ".xls":
+        return pd.read_excel(path, engine="xlrd")
+    return pd.read_excel(path)
 
 
 def _convert_xls_to_xlsx(file_path: Path) -> Path:
@@ -93,8 +121,10 @@ def _read_xlsx(file_path: Path) -> ExcelData:
 
 
 def _read_xls(file_path: Path) -> ExcelData:
-    workbook = xlrd.open_workbook(file_path)
-    sheet = workbook.sheet_by_index(0)
+    dataframe = read_excel_smart(file_path)
+    rows = dataframe.where(pd.notna(dataframe), None).values.tolist()
+    sheet = _DataFrameSheet(rows)
+    sheet.merged_cells = _read_xls_merged_cells(file_path)
 
     data_start_row, date_col, day_col = _find_data_start_row_xls(sheet)
     header_rows = _build_header_rows(data_start_row)
@@ -176,6 +206,17 @@ def _get_merge_left_col_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> int:
         if rlo <= row < rhi and clo <= col < chi:
             return clo
     return col
+
+
+def _read_xls_merged_cells(file_path: Path) -> list[tuple[int, int, int, int]]:
+    """Считывает диапазоны объединённых ячеек из .xls."""
+    try:
+        workbook = xlrd.open_workbook(file_path, formatting_info=True)
+        sheet = workbook.sheet_by_index(0)
+        return list(sheet.merged_cells)
+    except Exception as exc:  # noqa: BLE001 - резервный путь, если формат не поддержан.
+        logger.warning("Не удалось считать объединённые ячейки из %s: %s", file_path.name, exc)
+        return []
 
 
 def _find_data_start_row_xlsx(

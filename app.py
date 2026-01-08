@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime
 import json
 import logging
-import tempfile
 from pathlib import Path
 from typing import List
 
@@ -77,107 +76,17 @@ def _render_period_picker() -> str:
 
 
 def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
-    """Сохраняет загруженные файлы во временную папку."""
+    """Сохраняет загруженные файлы в указанную папку."""
     target_dir.mkdir(parents=True, exist_ok=True)
     for uploaded_file in uploaded_files:
         file_path = target_dir / uploaded_file.name
         file_path.write_bytes(uploaded_file.getbuffer())
 
 
-def main() -> None:
-    setup_logging()
-    setup_streamlit_logger()
-
-    st.title("Импорт данных из Excel в Google Sheets")
-
-    st.markdown(
-        """
-**Описание**
-- Выберите Excel файлы (.xls/.xlsx)
-- Укажите период, если его нет в названии файла (можно отключить)
-- Укажите Spreadsheet ID (или оставьте пустым, если он есть в config.json)
-- При необходимости включите режим dry-run
-"""
-    )
-
-    uploaded_files = st.file_uploader(
-        "Excel файлы",
-        type=["xls", "xlsx"],
-        accept_multiple_files=True,
-    )
-
-    use_manual_period = st.checkbox("Указать период вручную", value=True)
-    period_value = None
-    if use_manual_period:
-        period_value = _render_period_picker()
-
-    # Подтягиваем значения из config.json
-    config = load_config("./config.json")
-    config_sheet = extract_spreadsheet_id(config.get("spreadsheet_id"))
-    config_credentials = config.get("credentials_path") or config.get("credentials") or ""
-
-    spreadsheet_id = config_sheet
-    credentials_path = config_credentials if config_credentials else "./service_account.json"
-    credentials_upload = st.file_uploader(
-        "Загрузите service account JSON (если не используете Secrets)",
-        type=["json"],
-        accept_multiple_files=False,
-    )
-
-    if uploaded_files:
-        st.markdown("**Загруженные файлы:**")
-        st.write([uploaded_file.name for uploaded_file in uploaded_files])
-
-    dry_run = st.checkbox("Dry run (без записи)", value=True)
-
-    if st.button("Запустить импорт"):
-        st.session_state["log_lines"].clear()
-
-        if not uploaded_files:
-            st.error("Выберите файлы Excel")
-            return
-        if not spreadsheet_id:
-            st.error("Не найден Spreadsheet ID. Укажите его в поле или в config.json")
-            return
-        st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            _save_uploaded_files(uploaded_files, temp_path)
-
-            credentials_to_use = _resolve_credentials_path(
-                temp_path,
-                credentials_path=credentials_path,
-                credentials_upload=credentials_upload,
-            )
-            if not credentials_to_use:
-                return
-
-            process_directory(
-                input_dir=temp_dir,
-                period=period_value,
-                spreadsheet_id=spreadsheet_id,
-                credentials=credentials_to_use,
-                dry_run=dry_run,
-            )
-
-        st.success("Готово")
-
-    st.subheader("Логи")
-    log_text = "\n".join(st.session_state.get("log_lines", []))
-    st.text_area(
-        "Журнал выполнения",
-        value=log_text,
-        height=300,
-    )
-    if st.button("Копировать логи"):
-        _copy_to_clipboard(log_text)
-        st.success("Логи скопированы в буфер обмена")
-
-
 def _copy_to_clipboard(text: str) -> None:
     """Копирует текст в буфер обмена через компонент HTML."""
     escaped_text = (
-        text.replace("\\\\", "\\\\\\\\")
+        text.replace("\\", "\\\\")
         .replace("`", "\\`")
         .replace("$", "\\$")
         .replace("\n", "\\n")
@@ -233,6 +142,92 @@ def _resolve_credentials_path(
 
     st.error("Не найдены credentials в Secrets или по пути credentials_path из config.json.")
     return None
+
+
+def main() -> None:
+    setup_logging()
+    setup_streamlit_logger()
+
+    st.title("Импорт данных из Excel в Google Sheets")
+
+    st.markdown(
+        """
+**Описание**
+- Выберите Excel файлы (.xls/.xlsx)
+- Укажите период, если его нет в названии файла (можно отключить)
+- При необходимости включите режим dry-run
+"""
+    )
+
+    uploaded_files = st.file_uploader(
+        "Excel файлы",
+        type=["xls", "xlsx"],
+        accept_multiple_files=True,
+    )
+
+    use_manual_period = st.checkbox("Указать период вручную", value=True)
+    period_value = None
+    if use_manual_period:
+        period_value = _render_period_picker()
+
+    config = load_config("./config.json")
+    spreadsheet_id = extract_spreadsheet_id(config.get("spreadsheet_id"))
+    credentials_path = config.get("credentials_path") or config.get("credentials") or ""
+
+    credentials_upload = st.file_uploader(
+        "Загрузите service account JSON (если не используете Secrets)",
+        type=["json"],
+        accept_multiple_files=False,
+    )
+
+    dry_run = st.checkbox("Dry run (без записи)", value=True)
+
+    if uploaded_files:
+        st.markdown("**Загруженные файлы:**")
+        st.write([uploaded_file.name for uploaded_file in uploaded_files])
+
+    if st.button("Запустить импорт"):
+        st.session_state["log_lines"].clear()
+
+        if not uploaded_files:
+            st.error("Выберите файлы Excel")
+            return
+        if not spreadsheet_id:
+            st.error("Не найден Spreadsheet ID в config.json")
+            return
+
+        st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
+        upload_dir = Path("./uploads")
+        _save_uploaded_files(uploaded_files, upload_dir)
+
+        credentials_to_use = _resolve_credentials_path(
+            upload_dir,
+            credentials_path=credentials_path,
+            credentials_upload=credentials_upload,
+        )
+        if not credentials_to_use:
+            return
+
+        process_directory(
+            input_dir=str(upload_dir),
+            period=period_value,
+            spreadsheet_id=spreadsheet_id,
+            credentials=credentials_to_use,
+            dry_run=dry_run,
+        )
+
+        st.success("Готово")
+
+    st.subheader("Логи")
+    log_text = "\n".join(st.session_state.get("log_lines", []))
+    st.text_area(
+        "Журнал выполнения",
+        value=log_text,
+        height=300,
+    )
+    if st.button("Копировать логи"):
+        _copy_to_clipboard(log_text)
+        st.success("Логи скопированы в буфер обмена")
 
 
 if __name__ == "__main__":
