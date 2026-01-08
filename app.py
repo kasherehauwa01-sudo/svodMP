@@ -9,7 +9,6 @@ from typing import List
 import streamlit as st
 import streamlit.components.v1 as components
 
-from config_loader import extract_spreadsheet_id, load_config
 from processor import process_directory
 
 
@@ -170,16 +169,8 @@ def main() -> None:
     if use_manual_period:
         period_value = _render_period_picker()
 
-    config = load_config("./config.json")
-    config_spreadsheet_id = extract_spreadsheet_id(config.get("spreadsheet_id"))
-    secrets_spreadsheet_id = extract_spreadsheet_id(st.secrets.get("spreadsheet_id"))
-    spreadsheet_input = st.text_input(
-        "Spreadsheet ID или ссылка на таблицу",
-        value=config_spreadsheet_id or secrets_spreadsheet_id or "",
-        help="Можно вставить ID или ссылку на таблицу Google Sheets.",
-    )
-    spreadsheet_id = extract_spreadsheet_id(spreadsheet_input)
-    credentials_path = config.get("credentials_path") or config.get("credentials") or ""
+    spreadsheet_id = st.secrets.get("spreadsheet_id")
+    credentials_path = ""
 
     credentials_upload = st.file_uploader(
         "Загрузите service account JSON (если не используете Secrets)",
@@ -200,7 +191,7 @@ def main() -> None:
             st.error("Выберите файлы Excel")
             return
         if not spreadsheet_id:
-            st.error("Не найден Spreadsheet ID в config.json")
+            st.error("Не найден Spreadsheet ID в Streamlit Secrets")
             return
 
         st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
