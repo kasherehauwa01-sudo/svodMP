@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime
 import json
 import logging
-import os
 from pathlib import Path
 from typing import List
 
@@ -101,20 +100,37 @@ def _copy_to_clipboard(text: str) -> None:
     components.html(html, height=0)
 
 
-def _resolve_credentials_path(
-    temp_path: Path,
-    credentials_env_var: str,
-) -> str | None:
-    """Возвращает путь к credentials (из переменной среды, подготовленной GitHub Secrets)."""
-    github_secret = os.getenv(credentials_env_var) if credentials_env_var else None
-    if github_secret:
+def _resolve_credentials_path(temp_path: Path) -> str | None:
+    """Возвращает путь к credentials (из Streamlit Secrets)."""
+    secrets = st.secrets
+    if "credentials_json" in secrets and isinstance(secrets["credentials_json"], str):
         credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(github_secret, encoding="utf-8")
+        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
         return str(credentials_file)
 
-    env_label = credentials_env_var or "SVODMP"
-    st.error(f"Не найдены credentials в GitHub Secrets (переменная среды {env_label}).")
-    st.info("Убедитесь, что секрет задан как переменная окружения с JSON service account.")
+    if "credentials" in secrets and isinstance(secrets["credentials"], str):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(secrets["credentials"], encoding="utf-8")
+        return str(credentials_file)
+
+    if "google" in secrets and isinstance(secrets["google"], dict):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(
+            json.dumps(secrets["google"], ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return str(credentials_file)
+
+    if "gcp_service_account" in secrets and isinstance(secrets["gcp_service_account"], dict):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(
+            json.dumps(secrets["gcp_service_account"], ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return str(credentials_file)
+
+    st.error("Не найдены credentials в Streamlit Secrets.")
+    st.info("Добавьте JSON service account в Secrets, чтобы приложение смогло авторизоваться.")
     return None
 
 
@@ -165,7 +181,6 @@ def main() -> None:
 
     config = load_config("./config.json")
     spreadsheet_id = config.get("spreadsheet_id")
-    credentials_env_var = config.get("credentials_env_var", "SVODMP")
     dry_run = st.checkbox("Dry run (без записи)", value=True)
 
     if uploaded_files:
@@ -186,10 +201,7 @@ def main() -> None:
         upload_dir = Path("./uploads")
         _save_uploaded_files(uploaded_files, upload_dir)
 
-        credentials_to_use = _resolve_credentials_path(
-            upload_dir,
-            credentials_env_var=credentials_env_var,
-        )
+        credentials_to_use = _resolve_credentials_path(upload_dir)
         if not credentials_to_use:
             return
         if not _validate_credentials_json(credentials_to_use):
