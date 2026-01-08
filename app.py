@@ -9,6 +9,8 @@ from typing import List
 import streamlit as st
 import streamlit.components.v1 as components
 
+from config_loader import load_config
+
 from processor import process_directory
 
 
