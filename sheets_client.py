@@ -43,18 +43,19 @@ def find_mp_sheet(sheet_infos: list[SheetInfo], store_name: str) -> SheetInfo | 
     candidates = [
         info
         for info in sheet_infos
-        if info.title and "мп" in info.title.lower()
+        if info.title and info.title.lower().strip().startswith("мп")
     ]
-
+    keywords_map = {
+        "цум": ["цум", "советница"],
+        "диамант": ["диамант", "цитрус"],
+        "козловская": ["козловская", "санвэй", "санвей"],
+        "парк хаус": ["парк хаус", "паркхаус"],
+        "стройград": ["стройград", "строй град"],
+    }
+    keywords = keywords_map.get(store_lower, [store_lower])
     for info in candidates:
         title_lower = info.title.lower()
-        if store_lower == "цум":
-            if "цум" in title_lower:
-                return info
-        if store_lower == "диамант":
-            if "цитрус" in title_lower:
-                return info
-        if store_lower in title_lower:
+        if any(keyword in title_lower for keyword in keywords):
             return info
     return None
 

@@ -149,27 +149,11 @@ def _find_keyword_columns_xlsx(
     sheet: openpyxl.worksheet.worksheet.Worksheet,
     header_rows: list[int],
 ) -> dict[str, int]:
-    max_col = sheet.max_column
-    column_map: dict[str, int] = {}
-    checks_col = _find_checks_column_xlsx(sheet, header_rows)
-    column_map["checks"] = checks_col
-
-    for header_row in header_rows:
-        for col in range(1, max_col + 1):
-            text = _get_header_text_xlsx(sheet, header_row, col)
-            if not text:
-                continue
-            for key, keyword in KEYWORDS.items():
-                if key == "checks":
-                    continue
-                if key in column_map:
-                    continue
-                if _keyword_in_text(key, keyword, text):
-                    left_col = _get_merge_left_col_xlsx(sheet, header_row, col)
-                    column_map[key] = left_col - 1
-        if len(column_map) == len(KEYWORDS):
-            break
-
+    column_map = {
+        "checks": _find_header_column_xlsx(sheet, KEYWORDS["checks"]),
+        "goods": _find_header_column_xlsx(sheet, KEYWORDS["goods"]),
+        "gift_cert": _find_header_column_xlsx(sheet, KEYWORDS["gift_cert"]),
+    }
     _validate_column_map(column_map, header_rows)
     return column_map
 
@@ -188,27 +172,11 @@ def _find_keyword_columns_xls(
     header_rows: list[int],
     data_start_row: int,
 ) -> dict[str, int]:
-    column_map: dict[str, int] = {}
-    checks_col = _find_checks_column_xls(sheet, header_rows, data_start_row)
-    column_map["checks"] = checks_col
-
-    for header_row in header_rows:
-        row_index = header_row - 1
-        for col in range(sheet.ncols):
-            text = _get_header_text_xls(sheet, row_index, col)
-            if not text:
-                continue
-            for key, keyword in KEYWORDS.items():
-                if key == "checks":
-                    continue
-                if key in column_map:
-                    continue
-                if _keyword_in_text(key, keyword, text):
-                    left_col = _get_merge_left_col_xls(sheet, row_index, col)
-                    column_map[key] = left_col
-        if len(column_map) == len(KEYWORDS):
-            break
-
+    column_map = {
+        "checks": _find_header_column_xls(sheet, KEYWORDS["checks"]),
+        "goods": _find_header_column_xls(sheet, KEYWORDS["goods"]),
+        "gift_cert": _find_header_column_xls(sheet, KEYWORDS["gift_cert"]),
+    }
     _validate_column_map(column_map, header_rows)
     return column_map
 
@@ -220,39 +188,69 @@ def _get_merge_left_col_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> int:
     return col
 
 
-def _find_checks_column_xlsx(
+def _find_header_column_xlsx(
     sheet: openpyxl.worksheet.worksheet.Worksheet,
-    header_rows: list[int],
+    keyword: str,
 ) -> int:
-    """Возвращает индекс колонки «Чеки» с учётом объединённых ячеек."""
+    """Возвращает индекс колонки заголовка в 3-й строке (xlsx)."""
+    header_row = 3
+    merged_col = _find_header_column_in_merged_xlsx(sheet, keyword, header_row)
+    if merged_col is not None:
+        return merged_col - 1
     max_col = sheet.max_column
-    for header_row in header_rows:
-        for col in range(1, max_col + 1):
-            text = _get_header_text_xlsx(sheet, header_row, col)
-            if not text:
-                continue
-            if _keyword_in_text("checks", KEYWORDS["checks"], text):
-                left_col = _get_merge_left_col_xlsx(sheet, header_row, col)
-                return left_col - 1
-    raise ExcelReadError("Не найдена колонка «Чеки» в заголовке файла.")
+    for col in range(1, max_col + 1):
+        value = sheet.cell(row=header_row, column=col).value
+        if _is_header_value(value, keyword):
+            return col - 1
+    raise ExcelReadError(f"Не найдена колонка «{keyword}» в заголовке файла.")
 
 
-def _find_checks_column_xls(
+def _find_header_column_xls(sheet: xlrd.sheet.Sheet, keyword: str) -> int:
+    """Возвращает индекс колонки заголовка в 3-й строке (xls)."""
+    header_row = 2
+    merged_col = _find_header_column_in_merged_xls(sheet, keyword, header_row)
+    if merged_col is not None:
+        return merged_col
+    for col in range(sheet.ncols):
+        value = sheet.cell_value(header_row, col)
+        if _is_header_value(value, keyword):
+            return col
+    raise ExcelReadError(f"Не найдена колонка «{keyword}» в заголовке файла.")
+
+
+def _find_header_column_in_merged_xlsx(
+    sheet: openpyxl.worksheet.worksheet.Worksheet,
+    keyword: str,
+    header_row: int,
+) -> Optional[int]:
+    for cell_range in sheet.merged_cells.ranges:
+        if cell_range.min_row != header_row:
+            continue
+        value = sheet.cell(row=cell_range.min_row, column=cell_range.min_col).value
+        if _is_header_value(value, keyword):
+            return cell_range.min_col
+    return None
+
+
+def _find_header_column_in_merged_xls(
     sheet: xlrd.sheet.Sheet,
-    header_rows: list[int],
-    data_start_row: int,
-) -> int:
-    """Возвращает индекс колонки «Чеки» с учётом объединённых ячеек."""
-    max_row = max(0, min(sheet.nrows, data_start_row - 1))
-    for row_index in range(max_row):
-        for col in range(sheet.ncols):
-            text = _get_header_text_xls(sheet, row_index, col)
-            if not text:
-                continue
-            if _keyword_in_text("checks", KEYWORDS["checks"], text):
-                left_col = _get_merge_left_col_xls(sheet, row_index, col)
-                return left_col
-    raise ExcelReadError("Не найдена колонка «Чеки» в заголовке файла.")
+    keyword: str,
+    header_row: int,
+) -> Optional[int]:
+    for rlo, _rhi, clo, _chi in sheet.merged_cells:
+        if rlo != header_row:
+            continue
+        value = sheet.cell_value(rlo, clo)
+        if _is_header_value(value, keyword):
+            return clo
+    return None
+
+
+def _is_header_value(value: Any, keyword: str) -> bool:
+    text = _normalize_header_value(value)
+    if text is None:
+        return False
+    return text == keyword.lower()
 
 
 def _read_xls_merged_cells(file_path: Path) -> list[tuple[int, int, int, int]]:
@@ -269,69 +267,19 @@ def _read_xls_merged_cells(file_path: Path) -> list[tuple[int, int, int, int]]:
 def _find_data_start_row_xlsx(
     sheet: openpyxl.worksheet.worksheet.Worksheet,
 ) -> tuple[int, int, int]:
-    max_row = sheet.max_row
-    date_col = 0
-    day_col = 1
-    for row in range(1, max_row + 1):
-        value = _get_header_text_xlsx(sheet, row, 1)
+    for row in range(1, sheet.max_row + 1):
+        value = sheet.cell(row=row, column=1).value
         if _is_date_header(value):
-            return row + 1, date_col, day_col
-    for row in range(1, max_row + 1):
-        for col in range(1, min(sheet.max_column, 26) + 1):
-            value = _get_header_text_xlsx(sheet, row, col)
-            if _is_date_header(value):
-                return row + 1, col - 1, col
-    for row in range(1, max_row + 1):
-        for col in range(1, sheet.max_column + 1):
-            value = _get_header_text_xlsx(sheet, row, col)
-            if _is_date_header(value):
-                return row + 1, max(col - 2, 0), max(col - 1, 0)
-    day_header = _find_day_header_xlsx(sheet)
-    if day_header:
-        header_row, day_header_col = day_header
-        date_col = max(day_header_col - 2, 0)
-        day_col = day_header_col - 1
-        return header_row + 1, date_col, day_col
-    fallback_row = _find_date_like_row_xlsx(sheet)
-    if fallback_row:
-        return fallback_row, date_col, day_col
-    column_a_row = _find_date_like_in_column_xlsx(sheet)
-    if column_a_row:
-        return column_a_row, date_col, day_col
-    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
+            return row + 1, 0, 1
+    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в колонке A")
 
 
 def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int, int]:
-    date_col = 0
-    day_col = 1
     for row in range(sheet.nrows):
         value = _get_header_text_xls(sheet, row, 0)
         if _is_date_header(value):
-            return row + 2, date_col, day_col
-    max_col = min(sheet.ncols, 26)
-    for row in range(sheet.nrows):
-        for col in range(max_col):
-            value = _get_header_text_xls(sheet, row, col)
-            if _is_date_header(value):
-                return row + 2, col, col + 1
-    for row in range(sheet.nrows):
-        for col in range(sheet.ncols):
-            value = _get_header_text_xls(sheet, row, col)
-            if _is_date_header(value):
-                return row + 2, max(col - 1, 0), col
-    day_header = _find_day_header_xls(sheet)
-    if day_header:
-        header_row, day_header_col = day_header
-        date_col = max(day_header_col - 1, 0)
-        day_col = day_header_col
-        return header_row + 2, date_col, day_col
-    fallback_row = _find_date_like_row_xls(sheet)
-    if fallback_row:
-        return fallback_row, date_col, day_col
-    column_a_row = _find_date_like_in_column_xls(sheet)
-    if column_a_row:
-        return column_a_row, date_col, day_col
-    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в диапазоне A:H")
+            return row + 2, 0, 1
+    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в колонке A")
 
 
 def _find_data_end_row_xlsx(sheet: openpyxl.worksheet.worksheet.Worksheet, start_row: int) -> int:
