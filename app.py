@@ -103,62 +103,43 @@ def _copy_to_clipboard(text: str) -> None:
 def _resolve_credentials_path(temp_path: Path) -> str | None:
     """Возвращает путь к credentials (из Streamlit Secrets)."""
     secrets = st.secrets
+    if "credentials_json" in secrets and isinstance(secrets["credentials_json"], str):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
+        return str(credentials_file)
 
-    # 1) Явная строка с JSON
-    if "credentials_json" in secrets:
-        value = secrets["credentials_json"]
-        if isinstance(value, str):
-            credentials_file = temp_path / "credentials.json"
-            credentials_file.write_text(value, encoding="utf-8")
-            return str(credentials_file)
+    if "SVODMP" in secrets and isinstance(secrets["SVODMP"], str):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(secrets["SVODMP"], encoding="utf-8")
+        return str(credentials_file)
 
-    # 2) Наш основной вариант: секция [SVODMP] как объект
-    if "SVODMP" in secrets:
-        # st.secrets["SVODMP"] — не dict, но его можно привести к dict()
-        credentials_dict = dict(secrets["SVODMP"])
+    if "credentials" in secrets and isinstance(secrets["credentials"], str):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(secrets["credentials"], encoding="utf-8")
+        return str(credentials_file)
+
+    if "google" in secrets and isinstance(secrets["google"], dict):
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(
-            json.dumps(credentials_dict, ensure_ascii=False),
+            json.dumps(secrets["google"], ensure_ascii=False),
             encoding="utf-8",
         )
         return str(credentials_file)
 
-    # 3) Альтернативный: строка с JSON в ключе credentials
-    if "credentials" in secrets:
-        value = secrets["credentials"]
-        if isinstance(value, str):
-            credentials_file = temp_path / "credentials.json"
-            credentials_file.write_text(value, encoding="utf-8")
-            return str(credentials_file)
-
-    # 4) Объектные варианты на будущее
-    if "google" in secrets:
-        credentials_dict = dict(secrets["google"])
+    if "gcp_service_account" in secrets and isinstance(secrets["gcp_service_account"], dict):
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(
-            json.dumps(credentials_dict, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        return str(credentials_file)
-
-    if "gcp_service_account" in secrets:
-        credentials_dict = dict(secrets["gcp_service_account"])
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(
-            json.dumps(credentials_dict, ensure_ascii=False),
+            json.dumps(secrets["gcp_service_account"], ensure_ascii=False),
             encoding="utf-8",
         )
         return str(credentials_file)
 
     st.error("Не найдены credentials в Streamlit Secrets.")
     st.info(
-        "Добавьте JSON service account в Secrets (секция [SVODMP], "
-        "или ключи credentials_json / credentials / google / gcp_service_account)."
+        "Добавьте JSON service account в Secrets (ключ SVODMP, credentials_json или credentials)."
     )
-    st.caption("Также поддерживаются объектные секции: [google] и [gcp_service_account].")
+    st.caption("Также поддерживаются объектные ключи: google и gcp_service_account.")
     return None
-
-
 
 
 def _validate_credentials_json(credentials_path: str) -> bool:
@@ -172,7 +153,18 @@ def _validate_credentials_json(credentials_path: str) -> bool:
         if not stripped_content.startswith("{"):
             st.error("Файл credentials должен быть JSON-объектом. Проверьте формат файла.")
             return False
-        json.loads(raw_content)
+        payload = json.loads(raw_content)
+        private_key = payload.get("private_key")
+        if isinstance(private_key, str):
+            if "BEGIN PRIVATE KEY" not in private_key or "END PRIVATE KEY" not in private_key:
+                st.error(
+                    "В credentials отсутствует корректный private_key в формате PEM. "
+                    "Проверьте, что ключ из service account не обрезан."
+                )
+                return False
+        else:
+            st.error("В credentials нет поля private_key или оно некорректного типа.")
+            return False
     except (OSError, json.JSONDecodeError) as exc:
         st.error(f"Некорректный JSON в credentials файле: {exc}")
         st.info("Проверьте, что вы загрузили JSON service account, а не пустой файл.")
