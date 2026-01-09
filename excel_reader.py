@@ -101,7 +101,10 @@ def _read_xlsx(file_path: Path) -> ExcelData:
     workbook = openpyxl.load_workbook(file_path, data_only=True)
     sheet = workbook.active
 
-    data_start_row, date_col, day_col = _find_data_start_row_xlsx(sheet)
+    checks_header_row, _checks_header_col = _find_checks_header_cell_xlsx(sheet)
+    data_start_row = checks_header_row + 5
+    date_col = 0
+    day_col = 1
     header_rows = _build_header_rows(data_start_row)
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
     column_map = _find_keyword_columns_xlsx(sheet, header_rows or HEADER_ROWS)
@@ -126,7 +129,10 @@ def _read_xls(file_path: Path) -> ExcelData:
     sheet = _DataFrameSheet(rows)
     sheet.merged_cells = _read_xls_merged_cells(file_path)
 
-    data_start_row, date_col, day_col = _find_data_start_row_xls(sheet)
+    checks_header_row, _checks_header_col = _find_checks_header_cell_xls(sheet)
+    data_start_row = checks_header_row + 6
+    date_col = 0
+    day_col = 1
     header_rows = _build_header_rows(data_start_row)
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
     column_map = _find_keyword_columns_xls(sheet, header_rows or HEADER_ROWS, data_start_row)
@@ -251,6 +257,36 @@ def _is_header_value(value: Any, keyword: str) -> bool:
     if text is None:
         return False
     return text == keyword.lower()
+
+
+def _find_checks_header_cell_xlsx(
+    sheet: openpyxl.worksheet.worksheet.Worksheet,
+) -> tuple[int, int]:
+    """Возвращает координаты ячейки с заголовком «Чеки» (xlsx)."""
+    for cell_range in sheet.merged_cells.ranges:
+        value = sheet.cell(row=cell_range.min_row, column=cell_range.min_col).value
+        if _is_header_value(value, KEYWORDS["checks"]):
+            return cell_range.min_row, cell_range.min_col
+    for row in range(1, sheet.max_row + 1):
+        for col in range(1, sheet.max_column + 1):
+            value = sheet.cell(row=row, column=col).value
+            if _is_header_value(value, KEYWORDS["checks"]):
+                return row, col
+    raise ExcelReadError("Не найдена колонка «Чеки» в заголовке файла.")
+
+
+def _find_checks_header_cell_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int]:
+    """Возвращает координаты ячейки с заголовком «Чеки» (xls)."""
+    for rlo, _rhi, clo, _chi in sheet.merged_cells:
+        value = sheet.cell_value(rlo, clo)
+        if _is_header_value(value, KEYWORDS["checks"]):
+            return rlo, clo
+    for row in range(sheet.nrows):
+        for col in range(sheet.ncols):
+            value = sheet.cell_value(row, col)
+            if _is_header_value(value, KEYWORDS["checks"]):
+                return row, col
+    raise ExcelReadError("Не найдена колонка «Чеки» в заголовке файла.")
 
 
 def _read_xls_merged_cells(file_path: Path) -> list[tuple[int, int, int, int]]:
