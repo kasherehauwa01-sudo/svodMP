@@ -108,6 +108,11 @@ def _resolve_credentials_path(temp_path: Path) -> str | None:
         credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
         return str(credentials_file)
 
+    if "SVODMP" in secrets and isinstance(secrets["SVODMP"], str):
+        credentials_file = temp_path / "credentials.json"
+        credentials_file.write_text(secrets["SVODMP"], encoding="utf-8")
+        return str(credentials_file)
+
     if "credentials" in secrets and isinstance(secrets["credentials"], str):
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(secrets["credentials"], encoding="utf-8")
@@ -130,7 +135,10 @@ def _resolve_credentials_path(temp_path: Path) -> str | None:
         return str(credentials_file)
 
     st.error("Не найдены credentials в Streamlit Secrets.")
-    st.info("Добавьте JSON service account в Secrets, чтобы приложение смогло авторизоваться.")
+    st.info(
+        "Добавьте JSON service account в Secrets (ключ SVODMP, credentials_json или credentials)."
+    )
+    st.caption("Также поддерживаются объектные ключи: google и gcp_service_account.")
     return None
 
 
