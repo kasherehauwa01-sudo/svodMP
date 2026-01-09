@@ -104,39 +104,48 @@ def _resolve_credentials_path(temp_path: Path) -> str | None:
     """Возвращает путь к credentials (из Streamlit Secrets)."""
     secrets = st.secrets
 
-    # 1) Явная строка с JSON (если всё-таки захочешь хранить так)
-    if "credentials_json" in secrets and isinstance(secrets["credentials_json"], str):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
-        return str(credentials_file)
+    # 1) Явная строка с JSON
+    if "credentials_json" in secrets:
+        value = secrets["credentials_json"]
+        if isinstance(value, str):
+            credentials_file = temp_path / "credentials.json"
+            credentials_file.write_text(value, encoding="utf-8")
+            return str(credentials_file)
 
-    # 2) Наш вариант: секция [SVODMP] как объект
-    if "SVODMP" in secrets and isinstance(secrets["SVODMP"], dict):
+    # 2) Наш основной вариант: секция [SVODMP] как объект
+    if "SVODMP" in secrets:
+        # st.secrets["SVODMP"] — не dict, но его можно привести к dict()
+        credentials_dict = dict(secrets["SVODMP"])
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(
-            json.dumps(dict(secrets["SVODMP"]), ensure_ascii=False),
+            json.dumps(credentials_dict, ensure_ascii=False),
             encoding="utf-8",
         )
         return str(credentials_file)
 
-    # 3) Альтернативные варианты (оставь как у тебя было)
-    if "credentials" in secrets and isinstance(secrets["credentials"], str):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["credentials"], encoding="utf-8")
-        return str(credentials_file)
+    # 3) Альтернативный: строка с JSON в ключе credentials
+    if "credentials" in secrets:
+        value = secrets["credentials"]
+        if isinstance(value, str):
+            credentials_file = temp_path / "credentials.json"
+            credentials_file.write_text(value, encoding="utf-8")
+            return str(credentials_file)
 
-    if "google" in secrets and isinstance(secrets["google"], dict):
+    # 4) Объектные варианты на будущее
+    if "google" in secrets:
+        credentials_dict = dict(secrets["google"])
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(
-            json.dumps(secrets["google"], ensure_ascii=False),
+            json.dumps(credentials_dict, ensure_ascii=False),
             encoding="utf-8",
         )
         return str(credentials_file)
 
-    if "gcp_service_account" in secrets and isinstance(secrets["gcp_service_account"], dict):
+    if "gcp_service_account" in secrets:
+        credentials_dict = dict(secrets["gcp_service_account"])
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(
-            json.dumps(secrets["gcp_service_account"], ensure_ascii=False),
+            json.dumps(credentials_dict, ensure_ascii=False),
             encoding="utf-8",
         )
         return str(credentials_file)
@@ -146,7 +155,9 @@ def _resolve_credentials_path(temp_path: Path) -> str | None:
         "Добавьте JSON service account в Secrets (секция [SVODMP], "
         "или ключи credentials_json / credentials / google / gcp_service_account)."
     )
+    st.caption("Также поддерживаются объектные секции: [google] и [gcp_service_account].")
     return None
+
 
 
 
