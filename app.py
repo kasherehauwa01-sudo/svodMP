@@ -103,16 +103,23 @@ def _copy_to_clipboard(text: str) -> None:
 def _resolve_credentials_path(temp_path: Path) -> str | None:
     """Возвращает путь к credentials (из Streamlit Secrets)."""
     secrets = st.secrets
+
+    # 1) Явная строка с JSON (если всё-таки захочешь хранить так)
     if "credentials_json" in secrets and isinstance(secrets["credentials_json"], str):
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
         return str(credentials_file)
 
-    if "SVODMP" in secrets and isinstance(secrets["SVODMP"], str):
+    # 2) Наш вариант: секция [SVODMP] как объект
+    if "SVODMP" in secrets and isinstance(secrets["SVODMP"], dict):
         credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["SVODMP"], encoding="utf-8")
+        credentials_file.write_text(
+            json.dumps(dict(secrets["SVODMP"]), ensure_ascii=False),
+            encoding="utf-8",
+        )
         return str(credentials_file)
 
+    # 3) Альтернативные варианты (оставь как у тебя было)
     if "credentials" in secrets and isinstance(secrets["credentials"], str):
         credentials_file = temp_path / "credentials.json"
         credentials_file.write_text(secrets["credentials"], encoding="utf-8")
@@ -136,10 +143,11 @@ def _resolve_credentials_path(temp_path: Path) -> str | None:
 
     st.error("Не найдены credentials в Streamlit Secrets.")
     st.info(
-        "Добавьте JSON service account в Secrets (ключ SVODMP, credentials_json или credentials)."
+        "Добавьте JSON service account в Secrets (секция [SVODMP], "
+        "или ключи credentials_json / credentials / google / gcp_service_account)."
     )
-    st.caption("Также поддерживаются объектные ключи: google и gcp_service_account.")
     return None
+
 
 
 def _validate_credentials_json(credentials_path: str) -> bool:
