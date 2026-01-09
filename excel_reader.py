@@ -151,6 +151,8 @@ def _find_keyword_columns_xlsx(
 ) -> dict[str, int]:
     max_col = sheet.max_column
     column_map: dict[str, int] = {}
+    checks_col = _find_checks_column_xlsx(sheet, header_rows)
+    column_map["checks"] = checks_col
 
     for header_row in header_rows:
         for col in range(1, max_col + 1):
@@ -158,6 +160,8 @@ def _find_keyword_columns_xlsx(
             if not text:
                 continue
             for key, keyword in KEYWORDS.items():
+                if key == "checks":
+                    continue
                 if key in column_map:
                     continue
                 if _keyword_in_text(key, keyword, text):
@@ -181,6 +185,8 @@ def _get_merge_left_col_xlsx(
 
 def _find_keyword_columns_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -> dict[str, int]:
     column_map: dict[str, int] = {}
+    checks_col = _find_checks_column_xls(sheet, header_rows)
+    column_map["checks"] = checks_col
 
     for header_row in header_rows:
         row_index = header_row - 1
@@ -189,6 +195,8 @@ def _find_keyword_columns_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -
             if not text:
                 continue
             for key, keyword in KEYWORDS.items():
+                if key == "checks":
+                    continue
                 if key in column_map:
                     continue
                 if _keyword_in_text(key, keyword, text):
@@ -206,6 +214,36 @@ def _get_merge_left_col_xls(sheet: xlrd.sheet.Sheet, row: int, col: int) -> int:
         if rlo <= row < rhi and clo <= col < chi:
             return clo
     return col
+
+
+def _find_checks_column_xlsx(
+    sheet: openpyxl.worksheet.worksheet.Worksheet,
+    header_rows: list[int],
+) -> int:
+    """Возвращает индекс колонки «Чеки» с учётом объединённых ячеек."""
+    max_col = sheet.max_column
+    for header_row in header_rows:
+        for col in range(1, max_col + 1):
+            text = _get_header_text_xlsx(sheet, header_row, col)
+            if not text:
+                continue
+            if _keyword_in_text("checks", KEYWORDS["checks"], text):
+                left_col = _get_merge_left_col_xlsx(sheet, header_row, col)
+                return left_col - 1
+    raise ExcelReadError("Не найдена колонка «Чеки» в заголовке файла.")
+
+
+def _find_checks_column_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -> int:
+    """Возвращает индекс колонки «Чеки» с учётом объединённых ячеек."""
+    for row_index in range(sheet.nrows):
+        for col in range(sheet.ncols):
+            text = _get_header_text_xls(sheet, row_index, col)
+            if not text:
+                continue
+            if _keyword_in_text("checks", KEYWORDS["checks"], text):
+                left_col = _get_merge_left_col_xls(sheet, row_index, col)
+                return left_col
+    raise ExcelReadError("Не найдена колонка «Чеки» в заголовке файла.")
 
 
 def _read_xls_merged_cells(file_path: Path) -> list[tuple[int, int, int, int]]:
