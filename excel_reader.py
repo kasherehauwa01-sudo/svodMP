@@ -129,7 +129,7 @@ def _read_xls(file_path: Path) -> ExcelData:
     data_start_row, date_col, day_col = _find_data_start_row_xls(sheet)
     header_rows = _build_header_rows(data_start_row)
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
-    column_map = _find_keyword_columns_xls(sheet, header_rows or HEADER_ROWS)
+    column_map = _find_keyword_columns_xls(sheet, header_rows or HEADER_ROWS, data_start_row)
     data_end_row = _find_data_end_row_xls(sheet, data_start_row)
 
     rows = _extract_rows_xls(sheet, data_start_row, data_end_row, column_map, date_col, day_col)
@@ -183,9 +183,13 @@ def _get_merge_left_col_xlsx(
     return col
 
 
-def _find_keyword_columns_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -> dict[str, int]:
+def _find_keyword_columns_xls(
+    sheet: xlrd.sheet.Sheet,
+    header_rows: list[int],
+    data_start_row: int,
+) -> dict[str, int]:
     column_map: dict[str, int] = {}
-    checks_col = _find_checks_column_xls(sheet, header_rows)
+    checks_col = _find_checks_column_xls(sheet, header_rows, data_start_row)
     column_map["checks"] = checks_col
 
     for header_row in header_rows:
@@ -233,9 +237,14 @@ def _find_checks_column_xlsx(
     raise ExcelReadError("Не найдена колонка «Чеки» в заголовке файла.")
 
 
-def _find_checks_column_xls(sheet: xlrd.sheet.Sheet, header_rows: list[int]) -> int:
+def _find_checks_column_xls(
+    sheet: xlrd.sheet.Sheet,
+    header_rows: list[int],
+    data_start_row: int,
+) -> int:
     """Возвращает индекс колонки «Чеки» с учётом объединённых ячеек."""
-    for row_index in range(sheet.nrows):
+    max_row = max(0, min(sheet.nrows, data_start_row - 1))
+    for row_index in range(max_row):
         for col in range(sheet.ncols):
             text = _get_header_text_xls(sheet, row_index, col)
             if not text:
