@@ -73,6 +73,7 @@ def process_directory(
     spreadsheet_id: str,
     credentials: str,
     dry_run: bool,
+    progress_callback=None,
 ) -> None:
     directory = Path(input_dir)
     if not directory.exists():
@@ -104,7 +105,8 @@ def process_directory(
             logger.error("Ошибка доступа к Google Sheets API: %s", exc)
             return
 
-    for file_path in files:
+    total_files = len(files)
+    for index, file_path in enumerate(files, start=1):
         try:
             context = _build_context(file_path, period, dry_run)
         except ValueError as exc:
@@ -186,6 +188,8 @@ def process_directory(
         )
 
         logger.info("%s: успешно перенесено строк: %s", file_path.name, len(rows_to_write))
+        if progress_callback:
+            progress_callback(index, total_files, file_path.name)
 
 
 def _build_context(file_path: Path, fallback_period: str | None, dry_run: bool) -> FileContext:

@@ -216,6 +216,8 @@ def main() -> None:
             return
 
         st.info("Запуск обработки. Логи смотрите ниже, в журнале выполнения.")
+        progress_bar = st.progress(0)
+        progress_text = st.empty()
         upload_dir = Path("./uploads")
         _save_uploaded_files(uploaded_files, upload_dir)
 
@@ -225,13 +227,22 @@ def main() -> None:
         if not _validate_credentials_json(credentials_to_use):
             return
 
+        def _update_progress(current: int, total: int, filename: str) -> None:
+            progress = int((current / total) * 100) if total else 100
+            progress_bar.progress(progress)
+            progress_text.info(f"Обрабатывается файл {current}/{total}: {filename}")
+
         process_directory(
             input_dir=str(upload_dir),
             period=period_value,
             spreadsheet_id=spreadsheet_id,
             credentials=credentials_to_use,
             dry_run=dry_run,
+            progress_callback=_update_progress,
         )
+
+        progress_bar.progress(100)
+        progress_text.success("Обработка завершена.")
 
         st.success("Готово")
 
