@@ -235,13 +235,19 @@ def main() -> None:
         st.session_state["conversion_done"] = False
         st.session_state["xlsx_dir"] = None
 
+    output_dir_input = st.text_input(
+        "Папка для сохранения xlsx (на сервере)",
+        value=str(Path("./uploads/xlsx")),
+        help="Укажите путь на сервере, куда сохранить конвертированные файлы.",
+    )
+
     if st.button("Конвертировать в xlsx"):
         if not uploaded_files:
             st.error("Выберите файлы Excel для конвертации")
             return
         upload_dir = Path("./uploads")
         _save_uploaded_files(uploaded_files, upload_dir)
-        xlsx_dir = upload_dir / "xlsx"
+        xlsx_dir = Path(output_dir_input)
         converted_files = _prepare_xlsx_folder(upload_dir, xlsx_dir)
         st.session_state["conversion_done"] = True
         st.session_state["xlsx_dir"] = str(xlsx_dir)
