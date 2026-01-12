@@ -4,6 +4,7 @@ import calendar
 import datetime
 import logging
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from googleapiclient.errors import HttpError
 from google.auth.exceptions import RefreshError
 
 from excel_reader import ExcelReadError, read_excel
+from excel_reader import read_excel_smart
 from sheets_client import (
     apply_green_fill,
     build_sheets_service,
@@ -77,9 +79,10 @@ def process_directory(
         logger.error("Папка не найдена: %s", directory)
         return
 
-    files = sorted(directory.glob("*.xls")) + sorted(directory.glob("*.xlsx"))
+    _convert_xls_files(directory)
+    files = sorted(directory.glob("*.xlsx"))
     if not files:
-        logger.warning("В папке нет файлов .xls или .xlsx")
+        logger.warning("В папке нет файлов .xlsx")
         return
 
     service = None
@@ -286,6 +289,21 @@ def _format_period_label(period: str) -> str:
     """Возвращает период в формате ММ-ГГГГ."""
     year, month = _parse_period(period)
     return f"{month:02d}-{year}"
+
+
+def _convert_xls_files(directory: Path) -> None:
+    """Конвертирует все .xls в .xlsx и ждёт завершения записи."""
+    xls_files = sorted(directory.glob("*.xls"))
+    if not xls_files:
+        return
+    for file_path in xls_files:
+        target_path = file_path.with_suffix(".xlsx")
+        if target_path.exists():
+            continue
+        dataframe = read_excel_smart(file_path)
+        dataframe.to_excel(target_path, index=False, engine="openpyxl")
+        logger.info("Конвертирован %s -> %s", file_path.name, target_path.name)
+    time.sleep(2)
 
 
 def _format_date_value(value) -> str | None:
