@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import datetime
+import io
 import json
 import logging
 import shutil
+import zipfile
 from pathlib import Path
 from typing import List
 
@@ -107,6 +109,16 @@ def _prepare_xlsx_folder(source_dir: Path, xlsx_dir: Path) -> list[Path]:
             shutil.copy(file_path, target_path)
             converted_files.append(target_path)
     return converted_files
+
+
+def _build_xlsx_zip(files: list[Path]) -> bytes:
+    """Собирает zip-архив из конвертированных xlsx файлов."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for file_path in files:
+            archive.write(file_path, arcname=file_path.name)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -234,12 +246,7 @@ def main() -> None:
         st.session_state["uploaded_files"] = current_files
         st.session_state["conversion_done"] = False
         st.session_state["xlsx_dir"] = None
-
-    output_dir_input = st.text_input(
-        "Папка для сохранения xlsx (на сервере)",
-        value=str(Path("./uploads/xlsx")),
-        help="Укажите путь на сервере, куда сохранить конвертированные файлы.",
-    )
+        st.session_state["zip_name"] = None
 
     if st.button("Конвертировать в xlsx"):
         if not uploaded_files:
@@ -247,13 +254,48 @@ def main() -> None:
             return
         upload_dir = Path("./uploads")
         _save_uploaded_files(uploaded_files, upload_dir)
-        xlsx_dir = Path(output_dir_input)
+        xlsx_dir = upload_dir / "xlsx"
         converted_files = _prepare_xlsx_folder(upload_dir, xlsx_dir)
         st.session_state["conversion_done"] = True
         st.session_state["xlsx_dir"] = str(xlsx_dir)
+        st.session_state["zip_name"] = None
         st.success(f"Готово. Файлы сохранены в {xlsx_dir}")
         if converted_files:
             st.write([path.name for path in converted_files])
+            zip_buffer = _build_xlsx_zip(converted_files)
+            st.download_button(
+                "Скачать xlsx",
+                data=zip_buffer,
+                file_name="converted_xlsx.zip",
+                mime="application/zip",
+            )
+
+    zip_upload = st.file_uploader(
+        "Загрузить ZIP с xlsx для импорта",
+        type=["zip"],
+        accept_multiple_files=False,
+    )
+    if zip_upload and st.session_state.get("zip_name") != zip_upload.name:
+        st.session_state["zip_name"] = zip_upload.name
+        st.session_state["conversion_done"] = False
+        st.session_state["xlsx_dir"] = None
+
+    if st.button("Подготовить ZIP для импорта"):
+        if not zip_upload:
+            st.error("Загрузите ZIP с xlsx")
+            return
+        upload_dir = Path("./uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        extracted_dir = upload_dir / "xlsx_from_zip"
+        if extracted_dir.exists():
+            shutil.rmtree(extracted_dir)
+        extracted_dir.mkdir(parents=True, exist_ok=True)
+        zip_bytes = zip_upload.getvalue()
+        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as archive:
+            archive.extractall(extracted_dir)
+        st.session_state["conversion_done"] = True
+        st.session_state["xlsx_dir"] = str(extracted_dir)
+        st.success(f"ZIP подготовлен. Файлы извлечены в {extracted_dir}")
 
     if st.button("Запустить импорт", disabled=not st.session_state.get("conversion_done")):
         st.session_state["log_lines"].clear()
