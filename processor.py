@@ -14,10 +14,12 @@ from excel_reader import ExcelReadError, read_excel
 from sheets_client import (
     apply_green_fill,
     build_sheets_service,
+    fetch_row_values,
     fetch_sheet_infos,
     find_mp_sheet,
     get_last_filled_row,
     insert_row,
+    update_summary_sheet,
     update_summary_row,
     update_formulas,
     update_values,
@@ -170,6 +172,15 @@ def process_directory(
         )
         update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
         update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
+        summary_values = fetch_row_values(service, spreadsheet_id, sheet_info.title, summary_row)
+        update_summary_sheet(
+            service,
+            spreadsheet_id,
+            sheet_infos,
+            sheet_info.title,
+            summary_values,
+            _format_period_label(period),
+        )
 
         logger.info("%s: успешно перенесено строк: %s", file_path.name, len(rows_to_write))
 
@@ -269,6 +280,12 @@ def _parse_period(period: str) -> tuple[int, int]:
     if month_name not in month_map:
         raise ValueError(f"Неизвестный месяц в периоде: {period}")
     return year, month_map[month_name]
+
+
+def _format_period_label(period: str) -> str:
+    """Возвращает период в формате ММ-ГГГГ."""
+    year, month = _parse_period(period)
+    return f"{month:02d}-{year}"
 
 
 def _format_date_value(value) -> str | None:

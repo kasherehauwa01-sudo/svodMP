@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -183,3 +183,202 @@ def update_formulas(
         valueInputOption="USER_ENTERED",
         body=body,
     ).execute()
+
+
+def fetch_row_values(
+    service,
+    spreadsheet_id: str,
+    sheet_title: str,
+    row_index: int,
+) -> list[Any]:
+    range_name = f"'{sheet_title}'!A{row_index}:H{row_index}"
+    response = (
+        service.spreadsheets()
+        .values()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+            valueRenderOption="UNFORMATTED_VALUE",
+        )
+        .execute()
+    )
+    values = response.get("values", [])
+    return values[0] if values else []
+
+
+def update_summary_sheet(
+    service,
+    spreadsheet_id: str,
+    sheet_infos: list[SheetInfo],
+    source_sheet_title: str,
+    source_row: list[Any],
+    period_label: str,
+) -> None:
+    summary_info = _find_summary_sheet(sheet_infos)
+    if not summary_info:
+        logger.warning("Не найден лист 'Сводная'")
+        return
+
+    keyword = _extract_store_keyword(source_sheet_title)
+    if not keyword:
+        logger.warning("Не удалось определить магазин для листа '%s'", source_sheet_title)
+        return
+
+    block_start = _find_summary_block_start(service, spreadsheet_id, summary_info, keyword)
+    if block_start is None:
+        logger.warning("Не найдён блок '%s' в листе 'Сводная'", keyword)
+        return
+
+    block_end = block_start + 7
+    target_row = _find_first_empty_row(
+        service,
+        spreadsheet_id,
+        summary_info.title,
+        block_start,
+        block_end,
+    )
+    if target_row is None:
+        logger.warning("Не удалось найти свободную строку для листа 'Сводная'")
+        return
+
+    values = [
+        [
+            period_label,
+            _get_cell_value(source_row, 2),
+            _get_cell_value(source_row, 3),
+            _get_cell_value(source_row, 4),
+            _get_cell_value(source_row, 5),
+            _get_cell_value(source_row, 6),
+            _get_cell_value(source_row, 7),
+        ]
+    ]
+    range_name = (
+        f"'{summary_info.title}'!"
+        f"{_column_to_letter(block_start + 1)}{target_row}:"
+        f"{_column_to_letter(block_start + 7)}{target_row}"
+    )
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=range_name,
+        valueInputOption="USER_ENTERED",
+        body={"values": values},
+    ).execute()
+
+
+def _find_summary_sheet(sheet_infos: list[SheetInfo]) -> SheetInfo | None:
+    for info in sheet_infos:
+        if info.title and info.title.strip().lower() == "сводная":
+            return info
+    return None
+
+
+def _extract_store_keyword(sheet_title: str) -> Optional[str]:
+    title_lower = sheet_title.lower()
+    candidates = [
+        "авиаторов",
+        "козловская",
+        "цитрус",
+        "привоз",
+        "простор",
+        "бахтурова",
+        "ахтубинск",
+        "стройград",
+        "цум",
+        "европа",
+        "парк хаус",
+    ]
+    for keyword in candidates:
+        if keyword in title_lower:
+            return keyword
+    return None
+
+
+def _find_summary_block_start(
+    service,
+    spreadsheet_id: str,
+    summary_info: SheetInfo,
+    keyword: str,
+) -> Optional[int]:
+    response = (
+        service.spreadsheets()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            ranges=f"'{summary_info.title}'!1:1",
+            includeGridData=True,
+            fields="sheets(properties,merges,data.rowData.values.effectiveValue,data.rowData.values.formattedValue)",
+        )
+        .execute()
+    )
+    sheets = response.get("sheets", [])
+    if not sheets:
+        return None
+    sheet_data = sheets[0]
+    merges = sheet_data.get("merges", [])
+    row_data = sheet_data.get("data", [])
+    row_values = []
+    if row_data and row_data[0].get("rowData"):
+        row_values = row_data[0]["rowData"][0].get("values", [])
+
+    for merged in merges:
+        if merged.get("startRowIndex") != 0:
+            continue
+        start_col = merged.get("startColumnIndex", 0)
+        cell_text = _get_row_value_text(row_values, start_col)
+        if keyword in cell_text:
+            return start_col
+    return None
+
+
+def _get_row_value_text(values: list[dict], col_index: int) -> str:
+    if col_index >= len(values):
+        return ""
+    value = values[col_index].get("effectiveValue") or {}
+    text = (
+        value.get("stringValue")
+        or values[col_index].get("formattedValue")
+        or ""
+    )
+    return _normalize_text(str(text))
+
+
+def _find_first_empty_row(
+    service,
+    spreadsheet_id: str,
+    sheet_title: str,
+    start_col: int,
+    end_col: int,
+) -> Optional[int]:
+    range_name = (
+        f"'{sheet_title}'!"
+        f"{_column_to_letter(start_col + 1)}2:{_column_to_letter(end_col)}"
+    )
+    response = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=range_name)
+        .execute()
+    )
+    values = response.get("values", [])
+    for idx, row in enumerate(values, start=2):
+        if not any(cell not in (None, "") for cell in row):
+            return idx
+    return len(values) + 2
+
+
+def _get_cell_value(row: list[Any], index: int) -> Any:
+    if index < len(row):
+        return row[index]
+    return None
+
+
+def _column_to_letter(column_index: int) -> str:
+    result = ""
+    col = column_index
+    while col > 0:
+        col, remainder = divmod(col - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join(text.replace("\u00a0", " ").lower().split())
