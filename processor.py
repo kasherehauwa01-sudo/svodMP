@@ -301,12 +301,13 @@ def _convert_xls_files(directory: Path) -> None:
     if not xls_files:
         return
     for file_path in xls_files:
-        target_path = file_path.with_suffix(".xlsx")
+        target_path = directory / f"{file_path.stem}.xlsx"
         if target_path.exists():
             continue
         dataframe = read_excel_smart(file_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         dataframe.to_excel(target_path, index=False, engine="openpyxl")
-        logger.info("Конвертирован %s -> %s", file_path.name, target_path.name)
+        logger.info("Конвертирован %s -> %s", file_path.name, target_path)
     time.sleep(2)
 
 
