@@ -199,7 +199,7 @@ def main() -> None:
 
     config = load_config("./config.json")
     spreadsheet_id = config.get("spreadsheet_id")
-    dry_run = st.checkbox("Dry run (без записи)", value=True)
+    dry_run = False
 
     if uploaded_files:
         st.markdown("**Загруженные файлы:**")
