@@ -348,9 +348,10 @@ def _find_first_empty_row(
     start_col: int,
     end_col: int,
 ) -> Optional[int]:
+    start_row = 65
     range_name = (
         f"'{sheet_title}'!"
-        f"{_column_to_letter(start_col + 1)}2:{_column_to_letter(end_col)}"
+        f"{_column_to_letter(start_col + 1)}{start_row}:{_column_to_letter(end_col)}"
     )
     response = (
         service.spreadsheets()
@@ -359,10 +360,10 @@ def _find_first_empty_row(
         .execute()
     )
     values = response.get("values", [])
-    for idx, row in enumerate(values, start=2):
+    for idx, row in enumerate(values, start=start_row):
         if not any(cell not in (None, "") for cell in row):
             return idx
-    return len(values) + 2
+    return len(values) + start_row
 
 
 def _get_cell_value(row: list[Any], index: int) -> Any:
