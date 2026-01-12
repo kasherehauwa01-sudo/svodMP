@@ -9,11 +9,11 @@ import zipfile
 from pathlib import Path
 from typing import List
 
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
 from config_loader import load_config
-from excel_reader import read_excel_smart
 
 from processor import process_directory
 
@@ -90,9 +90,9 @@ def _save_uploaded_files(uploaded_files: list, target_dir: Path) -> None:
 
 def _convert_xls_to_xlsx(source_path: Path, target_path: Path) -> None:
     """Конвертирует .xls в .xlsx через pandas."""
-    dataframe = read_excel_smart(source_path)
+    dataframe = pd.read_excel(source_path, engine="xlrd", header=None)
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    dataframe.to_excel(target_path, index=False, engine="openpyxl")
+    dataframe.to_excel(target_path, index=False, header=False, engine="openpyxl")
 
 
 def _prepare_xlsx_folder(source_dir: Path, xlsx_dir: Path) -> list[Path]:
