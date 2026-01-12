@@ -246,7 +246,7 @@ def update_summary_sheet(
             period_label,
             _get_cell_value(source_row, 2),
             _get_cell_value(source_row, 3),
-            _get_cell_value(source_row, 4),
+            _round_value(_get_cell_value(source_row, 4)),
             _get_cell_value(source_row, 5),
             _get_cell_value(source_row, 6),
             _get_cell_value(source_row, 7),
@@ -370,6 +370,12 @@ def _get_cell_value(row: list[Any], index: int) -> Any:
     if index < len(row):
         return row[index]
     return None
+
+
+def _round_value(value: Any) -> Any:
+    if isinstance(value, (int, float)):
+        return round(value)
+    return value
 
 
 def _column_to_letter(column_index: int) -> str:
