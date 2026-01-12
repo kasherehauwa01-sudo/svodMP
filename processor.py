@@ -78,9 +78,9 @@ def process_directory(
         logger.error("Папка не найдена: %s", directory)
         return
 
-    files = sorted(directory.glob("*.xlsx"))
+    files = sorted(directory.glob("*.xls")) + sorted(directory.glob("*.xlsx"))
     if not files:
-        logger.warning("В папке нет файлов .xlsx")
+        logger.warning("В папке нет файлов .xls или .xlsx")
         return
 
     service = None
