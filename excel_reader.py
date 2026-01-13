@@ -410,6 +410,8 @@ def _detect_store_from_path(file_path: Path) -> str | None:
 def _get_store_fallback_column(store: str | None, keyword: str) -> int:
     if store in {"Ахтубинск", "Европа"} and keyword == "checks":
         return 16
+    if store == "Ахтубинск" and keyword == "goods":
+        return 19
     if store == "Европа" and keyword == "goods":
         return 19
     if store == "Козловская" and keyword == "checks":
