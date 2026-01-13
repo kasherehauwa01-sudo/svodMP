@@ -343,7 +343,7 @@ def _find_data_start_row_xlsx(
         value = sheet.cell(row=row, column=1).value
         if _is_date_header(value):
             return row + 1, 0, 1
-    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в колонке A")
+    return 2, 0, 1
 
 
 def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int, int]:
@@ -351,7 +351,7 @@ def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int, int]:
         value = _get_header_text_xls(sheet, row, 0)
         if _is_date_header(value):
             return row + 2, 0, 1
-    raise ExcelReadError("Не найдена строка с заголовком 'Дата' в колонке A")
+    return 2, 0, 1
 
 
 def _detect_store_from_path(file_path: Path) -> str | None:
