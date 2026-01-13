@@ -130,8 +130,8 @@ def _read_xls(file_path: Path) -> ExcelData:
 
     data_start_row, date_col, day_col = _find_data_start_row_xls(sheet)
     try:
-    checks_header_row, _checks_header_col = _find_checks_header_cell_xls(sheet)
-    data_start_row = checks_header_row + 6
+        checks_header_row, _checks_header_col = _find_checks_header_cell_xls(sheet)
+        data_start_row = checks_header_row + 6
     except ExcelReadError:
         logger.warning("Не найдена ячейка «Чеки» в заголовке, используем строку «Дата»")
     header_rows = _build_header_rows(data_start_row)
