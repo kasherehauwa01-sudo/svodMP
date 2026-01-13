@@ -99,7 +99,7 @@ def read_excel(file_path: Path) -> ExcelData:
 
 def _read_xlsx(file_path: Path) -> ExcelData:
     workbook = openpyxl.load_workbook(file_path, data_only=True)
-    sheet = workbook.active
+    sheet = _select_sheet_for_parsing_xlsx(workbook)
 
     data_start_row, date_col, day_col = _find_data_start_row_xlsx(sheet)
     try:
@@ -126,15 +126,12 @@ def _read_xlsx(file_path: Path) -> ExcelData:
 
 
 def _read_xls(file_path: Path) -> ExcelData:
-    dataframe = read_excel_smart(file_path)
-    rows = dataframe.where(pd.notna(dataframe), None).values.tolist()
-    sheet = _DataFrameSheet(rows)
-    sheet.merged_cells = _read_xls_merged_cells(file_path)
+    sheet = _load_primary_xls_sheet(file_path)
 
     data_start_row, date_col, day_col = _find_data_start_row_xls(sheet)
     try:
-        checks_header_row, _checks_header_col = _find_checks_header_cell_xls(sheet)
-        data_start_row = checks_header_row + 6
+    checks_header_row, _checks_header_col = _find_checks_header_cell_xls(sheet)
+    data_start_row = checks_header_row + 6
     except ExcelReadError:
         logger.warning("Не найдена ячейка «Чеки» в заголовке, используем строку «Дата»")
     header_rows = _build_header_rows(data_start_row)
@@ -336,9 +333,52 @@ def _read_xls_merged_cells(file_path: Path) -> list[tuple[int, int, int, int]]:
         return []
 
 
+def _select_sheet_for_parsing_xlsx(
+    workbook: openpyxl.Workbook,
+) -> openpyxl.worksheet.worksheet.Worksheet:
+    """Пытается найти лист с заголовками, иначе возвращает активный."""
+    for sheet in workbook.worksheets:
+        try:
+            _find_checks_header_cell_xlsx(sheet)
+            return sheet
+        except ExcelReadError:
+            continue
+    return workbook.active
+
+
+def _load_primary_xls_sheet(file_path: Path) -> _DataFrameSheet:
+    """Загружает .xls лист, подбирая подходящий по наличию заголовков."""
+    workbook = xlrd.open_workbook(file_path, formatting_info=True)
+    selected_rows: list[list[Any]] = []
+    selected_merged: list[tuple[int, int, int, int]] = []
+    for idx in range(workbook.nsheets):
+        sheet = workbook.sheet_by_index(idx)
+        rows = [
+            [
+                sheet.cell_value(row, col)
+                for col in range(sheet.ncols)
+            ]
+            for row in range(sheet.nrows)
+        ]
+        wrapper = _DataFrameSheet(rows)
+        wrapper.merged_cells = list(sheet.merged_cells)
+        try:
+            _find_checks_header_cell_xls(wrapper)
+            return wrapper
+        except ExcelReadError:
+            if not selected_rows:
+                selected_rows = rows
+                selected_merged = list(sheet.merged_cells)
+    wrapper = _DataFrameSheet(selected_rows)
+    wrapper.merged_cells = selected_merged
+    return wrapper
+
+
 def _find_data_start_row_xlsx(
     sheet: openpyxl.worksheet.worksheet.Worksheet,
 ) -> tuple[int, int, int]:
+    if sheet.max_row >= 8:
+        return 8, 0, 1
     for row in range(1, sheet.max_row + 1):
         value = sheet.cell(row=row, column=1).value
         if _is_date_header(value):
@@ -347,6 +387,8 @@ def _find_data_start_row_xlsx(
 
 
 def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int, int]:
+    if sheet.nrows >= 8:
+        return 8, 0, 1
     for row in range(sheet.nrows):
         value = _get_header_text_xls(sheet, row, 0)
         if _is_date_header(value):
@@ -369,7 +411,7 @@ def _get_store_fallback_column(store: str | None, keyword: str) -> int:
     if store in {"Ахтубинск", "Европа"} and keyword == "checks":
         return 16
     if store == "Европа" and keyword == "goods":
-        return 22
+        return 19
     if store == "Козловская" and keyword == "checks":
         return 19
     if store == "Козловская" and keyword == "goods":
