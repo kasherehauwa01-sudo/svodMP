@@ -101,15 +101,18 @@ def _read_xlsx(file_path: Path) -> ExcelData:
     workbook = openpyxl.load_workbook(file_path, data_only=True)
     sheet = _select_sheet_for_parsing_xlsx(workbook)
 
+    store = _detect_store_from_path(file_path)
     data_start_row, date_col, day_col = _find_data_start_row_xlsx(sheet)
     try:
         checks_header_row, _checks_header_col = _find_checks_header_cell_xlsx(sheet)
         data_start_row = checks_header_row + 5
     except ExcelReadError:
         logger.warning("Не найдена ячейка «Чеки» в заголовке, используем строку «Дата»")
+    if store == "Ахтубинск":
+        data_start_row = 7
     header_rows = _build_header_rows(data_start_row)
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
-    column_map = _find_keyword_columns_xlsx(sheet, header_rows or HEADER_ROWS, _detect_store_from_path(file_path))
+    column_map = _find_keyword_columns_xlsx(sheet, header_rows or HEADER_ROWS, store)
     data_end_row = _find_data_end_row_xlsx(sheet, data_start_row)
 
     rows = _extract_rows_xlsx(sheet, data_start_row, data_end_row, column_map, date_col, day_col)
@@ -128,19 +131,22 @@ def _read_xlsx(file_path: Path) -> ExcelData:
 def _read_xls(file_path: Path) -> ExcelData:
     sheet = _load_primary_xls_sheet(file_path)
 
+    store = _detect_store_from_path(file_path)
     data_start_row, date_col, day_col = _find_data_start_row_xls(sheet)
     try:
         checks_header_row, _checks_header_col = _find_checks_header_cell_xls(sheet)
         data_start_row = checks_header_row + 6
     except ExcelReadError:
         logger.warning("Не найдена ячейка «Чеки» в заголовке, используем строку «Дата»")
+    if store == "Ахтубинск":
+        data_start_row = 7
     header_rows = _build_header_rows(data_start_row)
     header_row_index = header_rows[0] if header_rows else HEADER_ROWS[0]
     column_map = _find_keyword_columns_xls(
         sheet,
         header_rows or HEADER_ROWS,
         data_start_row,
-        _detect_store_from_path(file_path),
+        store,
     )
     data_end_row = _find_data_end_row_xls(sheet, data_start_row)
 
@@ -377,8 +383,6 @@ def _load_primary_xls_sheet(file_path: Path) -> _DataFrameSheet:
 def _find_data_start_row_xlsx(
     sheet: openpyxl.worksheet.worksheet.Worksheet,
 ) -> tuple[int, int, int]:
-    if sheet.max_row >= 8:
-        return 8, 0, 1
     for row in range(1, sheet.max_row + 1):
         value = sheet.cell(row=row, column=1).value
         if _is_date_header(value):
@@ -387,8 +391,6 @@ def _find_data_start_row_xlsx(
 
 
 def _find_data_start_row_xls(sheet: xlrd.sheet.Sheet) -> tuple[int, int, int]:
-    if sheet.nrows >= 8:
-        return 8, 0, 1
     for row in range(sheet.nrows):
         value = _get_header_text_xls(sheet, row, 0)
         if _is_date_header(value):
@@ -411,7 +413,7 @@ def _get_store_fallback_column(store: str | None, keyword: str) -> int:
     if store in {"Ахтубинск", "Европа"} and keyword == "checks":
         return 16
     if store == "Ахтубинск" and keyword == "goods":
-        return 19
+        return 38
     if store == "Европа" and keyword == "goods":
         return 19
     if store == "Козловская" and keyword == "checks":
