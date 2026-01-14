@@ -161,8 +161,12 @@ def process_directory(
             data_end,
         )
 
-        insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
-        apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+        try:
+            insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+            apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
+        except HttpError as exc:
+            logger.error("Ошибка вставки строки в '%s': %s", sheet_info.title, exc)
+            continue
         period_label = context.period.split()[0]
         try:
             update_summary_row(
