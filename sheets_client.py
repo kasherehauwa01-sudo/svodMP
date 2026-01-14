@@ -244,7 +244,7 @@ def update_summary_sheet(
     values = [
         [
             period_label,
-            _get_cell_value(source_row, 2),
+            _round_value(_get_cell_value(source_row, 2)),
             _get_cell_value(source_row, 3),
             _round_value(_get_cell_value(source_row, 4)),
             _get_cell_value(source_row, 5),
