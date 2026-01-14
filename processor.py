@@ -164,15 +164,19 @@ def process_directory(
         insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
         apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
         period_label = context.period.split()[0]
-        update_summary_row(
-            service,
-            spreadsheet_id,
-            sheet_info.title,
-            summary_row,
-            period_label,
-            data_start,
-            data_end,
-        )
+        try:
+            update_summary_row(
+                service,
+                spreadsheet_id,
+                sheet_info.title,
+                summary_row,
+                period_label,
+                data_start,
+                data_end,
+            )
+        except HttpError as exc:
+            logger.error("Ошибка обновления сводной строки в '%s': %s", sheet_info.title, exc)
+            continue
         update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
         update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
         group_imported_rows(
