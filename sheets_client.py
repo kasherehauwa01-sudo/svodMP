@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from googleapiclient.errors import HttpError
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -97,7 +99,9 @@ def apply_green_fill(service, spreadsheet_id: str, sheet_id: int, row_index: int
         }
     ]
     body = {"requests": requests}
-    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+    _execute_with_retry(
+        lambda: service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+    )
 
 
 def insert_row(service, spreadsheet_id: str, sheet_id: int, row_index: int) -> None:
@@ -115,7 +119,9 @@ def insert_row(service, spreadsheet_id: str, sheet_id: int, row_index: int) -> N
         }
     ]
     body = {"requests": requests}
-    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+    _execute_with_retry(
+        lambda: service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+    )
 
 
 def update_summary_row(
@@ -141,12 +147,12 @@ def update_summary_row(
     ]
     range_name = f"'{sheet_title}'!A{summary_row}:H{summary_row}"
     body = {"values": values}
-    service.spreadsheets().values().update(
+    _execute_with_retry(lambda: service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=range_name,
         valueInputOption="USER_ENTERED",
         body=body,
-    ).execute()
+    ).execute())
 
 
 def update_values(
@@ -159,12 +165,12 @@ def update_values(
     end_row = start_row + len(rows) - 1
     range_name = f"'{sheet_title}'!A{start_row}:H{end_row}"
     body = {"values": rows}
-    service.spreadsheets().values().update(
+    _execute_with_retry(lambda: service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=range_name,
         valueInputOption="RAW",
         body=body,
-    ).execute()
+    ).execute())
 
 
 def update_formulas(
@@ -177,12 +183,12 @@ def update_formulas(
     formulas = [[f"=C{row}/D{row}"] for row in range(start_row, end_row + 1)]
     range_name = f"'{sheet_title}'!E{start_row}:E{end_row}"
     body = {"values": formulas}
-    service.spreadsheets().values().update(
+    _execute_with_retry(lambda: service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=range_name,
         valueInputOption="USER_ENTERED",
         body=body,
-    ).execute()
+    ).execute())
 
 
 def group_imported_rows(
@@ -230,10 +236,12 @@ def group_imported_rows(
         },
     ]
     body = {"requests": requests}
-    response = service.spreadsheets().batchUpdate(
+    response = _execute_with_retry(
+        lambda: service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body=body,
     ).execute()
+    )
 
     group_id = (
         response.get("replies", [{}])[0]
@@ -254,10 +262,12 @@ def group_imported_rows(
             }
         ]
     }
-    service.spreadsheets().batchUpdate(
+    _execute_with_retry(
+        lambda: service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body=collapse_body,
     ).execute()
+    )
     logger.info(
         "Сгруппированы строки %s-%s (зелёная строка: %s)",
         group_start,
@@ -338,12 +348,14 @@ def update_summary_sheet(
         f"{_column_to_letter(block_start + 1)}{target_row}:"
         f"{_column_to_letter(block_start + 7)}{target_row}"
     )
-    service.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id,
-        range=range_name,
-        valueInputOption="USER_ENTERED",
-        body={"values": values},
-    ).execute()
+    _execute_with_retry(
+        lambda: service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+            valueInputOption="USER_ENTERED",
+            body={"values": values},
+        ).execute()
+    )
 
 
 def _find_summary_sheet(sheet_infos: list[SheetInfo]) -> SheetInfo | None:
@@ -470,3 +482,19 @@ def _column_to_letter(column_index: int) -> str:
 
 def _normalize_text(text: str) -> str:
     return " ".join(text.replace("\u00a0", " ").lower().split())
+
+
+def _execute_with_retry(func, retries: int = 3, delay_s: float = 1.5):
+    """Повторяет запрос при ошибке квоты (429)."""
+    attempt = 0
+    while True:
+        try:
+            return func()
+        except HttpError as exc:
+            attempt += 1
+            status = getattr(exc, "status_code", None) or getattr(exc.resp, "status", None)
+            if status != 429 or attempt > retries:
+                raise
+            sleep_for = delay_s * attempt
+            logger.warning("Превышена квота, повтор через %.1fс (попытка %s/%s)", sleep_for, attempt, retries)
+            time.sleep(sleep_for)
