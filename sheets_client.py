@@ -227,12 +227,36 @@ def group_imported_rows(
                     "endIndex": group_end,
                 }
             }
-        }
+        },
     ]
     body = {"requests": requests}
-    service.spreadsheets().batchUpdate(
+    response = service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body=body,
+    ).execute()
+
+    group_id = (
+        response.get("replies", [{}])[0]
+        .get("addDimensionGroup", {})
+        .get("dimensionGroup", {})
+        .get("groupId")
+    )
+    if group_id is None:
+        logger.info("Не удалось получить groupId для группировки строк %s-%s", group_start, group_end)
+        return
+    collapse_body = {
+        "requests": [
+            {
+                "updateDimensionGroup": {
+                    "dimensionGroup": {"groupId": group_id, "collapsed": True},
+                    "fields": "collapsed",
+                }
+            }
+        ]
+    }
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body=collapse_body,
     ).execute()
     logger.info(
         "Сгруппированы строки %s-%s (зелёная строка: %s)",
