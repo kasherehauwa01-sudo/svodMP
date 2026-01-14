@@ -185,6 +185,63 @@ def update_formulas(
     ).execute()
 
 
+def group_imported_rows(
+    service,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_row_1based: int,
+    end_row_1based: int,
+    excluded_row_1based: int | None = None,
+) -> None:
+    """Группирует импортированные строки, исключая зелёную строку."""
+    group_start = start_row_1based
+    group_end = end_row_1based
+
+    if excluded_row_1based and group_start <= excluded_row_1based <= group_end:
+        if excluded_row_1based == group_start:
+            group_start += 1
+        elif excluded_row_1based == group_end:
+            group_end -= 1
+        else:
+            logger.info(
+                "Пропущена группировка, зелёная строка внутри диапазона %s-%s",
+                start_row_1based,
+                end_row_1based,
+            )
+            return
+
+    if group_start > group_end:
+        logger.info(
+            "Группировка не выполнена: пустой диапазон после исключения строки %s",
+            excluded_row_1based,
+        )
+        return
+
+    requests = [
+        {
+            "addDimensionGroup": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": group_start - 1,
+                    "endIndex": group_end,
+                }
+            }
+        }
+    ]
+    body = {"requests": requests}
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body=body,
+    ).execute()
+    logger.info(
+        "Сгруппированы строки %s-%s (зелёная строка: %s)",
+        group_start,
+        group_end,
+        excluded_row_1based,
+    )
+
+
 def fetch_row_values(
     service,
     spreadsheet_id: str,

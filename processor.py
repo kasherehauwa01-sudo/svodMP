@@ -18,6 +18,7 @@ from sheets_client import (
     fetch_sheet_infos,
     find_mp_sheet,
     get_last_filled_row,
+    group_imported_rows,
     insert_row,
     update_summary_sheet,
     update_summary_row,
@@ -174,6 +175,14 @@ def process_directory(
         )
         update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
         update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
+        group_imported_rows(
+            service,
+            spreadsheet_id,
+            sheet_info.sheet_id,
+            start_row_1based=data_start,
+            end_row_1based=data_end,
+            excluded_row_1based=summary_row,
+        )
         summary_values = fetch_row_values(service, spreadsheet_id, sheet_info.title, summary_row)
         update_summary_sheet(
             service,
