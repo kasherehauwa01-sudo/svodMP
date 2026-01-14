@@ -413,7 +413,7 @@ def _get_store_fallback_column(store: str | None, keyword: str) -> int:
     if store in {"Ахтубинск", "Европа"} and keyword == "checks":
         return 16
     if store == "Ахтубинск" and keyword == "goods":
-        return 38
+        return 19
     if store == "Ахтубинск" and keyword == "gift_cert":
         return 38
     if store == "Европа" and keyword == "goods":
