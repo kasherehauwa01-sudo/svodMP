@@ -161,14 +161,10 @@ def process_directory(
             data_end,
         )
 
+        period_label = context.period.split()[0]
         try:
             insert_row(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
             apply_green_fill(service, spreadsheet_id, sheet_info.sheet_id, summary_row)
-        except HttpError as exc:
-            logger.error("Ошибка вставки строки в '%s': %s", sheet_info.title, exc)
-            continue
-        period_label = context.period.split()[0]
-        try:
             update_summary_row(
                 service,
                 spreadsheet_id,
@@ -178,28 +174,42 @@ def process_directory(
                 data_start,
                 data_end,
             )
+            update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
+            update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
+            group_imported_rows(
+                service,
+                spreadsheet_id,
+                sheet_info.sheet_id,
+                start_row_1based=data_start,
+                end_row_1based=data_end,
+                excluded_row_1based=summary_row,
+            )
+            summary_values = fetch_row_values(service, spreadsheet_id, sheet_info.title, summary_row)
+            update_summary_sheet(
+                service,
+                spreadsheet_id,
+                sheet_infos,
+                sheet_info.title,
+                summary_values,
+                _format_period_label(period),
+            )
         except HttpError as exc:
-            logger.error("Ошибка обновления сводной строки в '%s': %s", sheet_info.title, exc)
-            continue
-        update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
-        update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
-        group_imported_rows(
-            service,
-            spreadsheet_id,
-            sheet_info.sheet_id,
-            start_row_1based=data_start,
-            end_row_1based=data_end,
-            excluded_row_1based=summary_row,
-        )
-        summary_values = fetch_row_values(service, spreadsheet_id, sheet_info.title, summary_row)
-        update_summary_sheet(
-            service,
-            spreadsheet_id,
-            sheet_infos,
-            sheet_info.title,
-            summary_values,
-            _format_period_label(period),
-        )
+            if _is_permission_denied_http_error(exc):
+                logger.warning(
+                    "Нет прав на структурные изменения в '%s'. Переход в режим записи без вставки строки.",
+                    sheet_info.title,
+                )
+                data_start = last_row + 1
+                data_end = data_start + len(rows_to_write) - 1
+                try:
+                    update_values(service, spreadsheet_id, sheet_info.title, data_start, rows_to_write)
+                    update_formulas(service, spreadsheet_id, sheet_info.title, data_start, data_end)
+                except HttpError as write_exc:
+                    logger.error("Ошибка записи данных в '%s': %s", sheet_info.title, write_exc)
+                    continue
+            else:
+                logger.error("Ошибка вставки строки в '%s': %s", sheet_info.title, exc)
+                continue
 
         logger.info("%s: успешно перенесено строк: %s", file_path.name, len(rows_to_write))
         if progress_callback:
@@ -349,3 +359,10 @@ def _is_number(value: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _is_permission_denied_http_error(exc: HttpError) -> bool:
+    status = getattr(exc, "status_code", None) or getattr(exc.resp, "status", None)
+    if status != 403:
+        return False
+    return "PERMISSION_DENIED" in str(exc) or "does not have permission" in str(exc).lower()
