@@ -24,7 +24,7 @@ def build_sheets_service(credentials_path: str):
     credentials = service_account.Credentials.from_service_account_file(
         credentials_path, scopes=SCOPES
     )
-    return build("sheets", "v4", credentials=credentials)
+    return build("sheets", "v4", credentials=credentials, cache_discovery=False)
 
 
 def fetch_sheet_infos(service, spreadsheet_id: str) -> list[SheetInfo]:
