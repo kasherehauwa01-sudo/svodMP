@@ -103,43 +103,42 @@ def _copy_to_clipboard(text: str) -> None:
 def _resolve_credentials_path(temp_path: Path) -> str | None:
     """Возвращает путь к credentials (из Streamlit Secrets)."""
     secrets = st.secrets
-    if "credentials_json" in secrets and isinstance(secrets["credentials_json"], str):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["credentials_json"], encoding="utf-8")
-        return str(credentials_file)
 
-    if "SVODMP" in secrets and isinstance(secrets["SVODMP"], str):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["SVODMP"], encoding="utf-8")
-        return str(credentials_file)
+    # Вариант 1: строковый JSON целиком
+    if "credentials_json" in secrets:
+        value = secrets["credentials_json"]
+        if isinstance(value, str):
+            credentials_file = temp_path / "credentials.json"
+            credentials_file.write_text(value, encoding="utf-8")
+            return str(credentials_file)
 
-    if "credentials" in secrets and isinstance(secrets["credentials"], str):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(secrets["credentials"], encoding="utf-8")
-        return str(credentials_file)
+    # Вариант 2: строка с JSON в другом ключе
+    if "credentials" in secrets:
+        value = secrets["credentials"]
+        if isinstance(value, str):
+            credentials_file = temp_path / "credentials.json"
+            credentials_file.write_text(value, encoding="utf-8")
+            return str(credentials_file)
 
-    if "google" in secrets and isinstance(secrets["google"], dict):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(
-            json.dumps(secrets["google"], ensure_ascii=False),
-            encoding="utf-8",
-        )
-        return str(credentials_file)
-
-    if "gcp_service_account" in secrets and isinstance(secrets["gcp_service_account"], dict):
-        credentials_file = temp_path / "credentials.json"
-        credentials_file.write_text(
-            json.dumps(secrets["gcp_service_account"], ensure_ascii=False),
-            encoding="utf-8",
-        )
-        return str(credentials_file)
+    # Вариант 3: секция-объект (как у тебя [google])
+    for key in ("google", "gcp_service_account", "SVODMP"):
+        if key in secrets:
+            obj = secrets[key]  # это Secrets / mapping-подобный объект
+            credentials_file = temp_path / "credentials.json"
+            # превращаем его в обычный JSON
+            credentials_file.write_text(
+                json.dumps(dict(obj), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            return str(credentials_file)
 
     st.error("Не найдены credentials в Streamlit Secrets.")
     st.info(
-        "Добавьте JSON service account в Secrets (ключ SVODMP, credentials_json или credentials)."
+        "Добавьте JSON service account в Secrets (секция [google]/[gcp_service_account]/[SVODMP] "
+        "или ключ credentials_json / credentials)."
     )
-    st.caption("Также поддерживаются объектные ключи: google и gcp_service_account.")
     return None
+
 
 
 def _validate_credentials_json(credentials_path: str) -> bool:
