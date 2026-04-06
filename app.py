@@ -176,6 +176,10 @@ def main() -> None:
     setup_streamlit_logger()
 
     st.title("Импорт данных из Excel в Google Sheets")
+    st.link_button(
+        "Перейти в Гугл Таблицу",
+        "https://docs.google.com/spreadsheets/d/18FFM1eQSlhU9lP9AZBul3c1g0TRcpqBbE3QEF6T-kyI/edit?usp=sharing",
+    )
 
     st.markdown(
         """
