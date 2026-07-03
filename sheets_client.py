@@ -53,6 +53,7 @@ def find_mp_sheet(sheet_infos: list[SheetInfo], store_name: str) -> SheetInfo | 
         "козловская": ["козловская", "санвэй", "санвей"],
         "парк хаус": ["парк хаус", "паркхаус"],
         "стройград": ["стройград", "строй град"],
+        "универ": ["универ"],
     }
     keywords = keywords_map.get(store_lower, [store_lower])
     for info in candidates:
@@ -379,6 +380,7 @@ def _extract_store_keyword(sheet_title: str) -> Optional[str]:
         "цум",
         "европа",
         "парк хаус",
+        "универ",
     ]
     for keyword in candidates:
         if keyword in title_lower:
